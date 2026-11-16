@@ -1,103 +1,103 @@
 # agy-context
 
-Antigravity 会话统计插件 — 在侧边面板实时显示当前会话的 Token 消耗、上下文占用、耗时构成、工具调用和文件活动，另有全局总览页。
+> **🌐 [中文 / Chinese](./README_zh.md)**
 
-所有数据**全部来自本地**，不联网、不上传。
+Local-only Antigravity session analytics — shows the current session's token usage, context window consumption, time breakdown, tool calls and file activity live in the side panel, plus a global overview dashboard.
 
----
-
-## 功能
-
-### 侧边面板（随会话实时更新）
-
-打开右侧面板（`Ctrl+Shift+B`），顶部即当前会话的统计：
-
-| 区块 | 内容 |
-|---|---|
-| **会话头** | 标题、会话 ID、步数、更新时间 |
-| **KPI** | Token 消耗 · 预估费用 · 缓存命中 · 活跃时长 |
-| **当前上下文** | 已用量 / 窗口大小、占用百分比、彩色堆叠条、6 项构成明细 |
-| **上下文事件** | 内容被截断（上下文压缩）的记录 |
-| **文件活动** | 每个文件的写 / 改 / 读次数与字符量 |
-| **模型分布** | 本会话用到的模型及调用次数 |
-| **文件类型** | 按扩展名归类 |
-| **活跃时段** | 24 小时分布 |
-| **命令执行** | 完整命令历史，可按失败 / 慢 / 后台筛选，点击展开输出 |
-
-卡片布局与总览页完全一致，栅格自动塌成单列。
-
-### 上下文总览（侧边栏「上下文总览」）
-
-全局视角，聚合所有会话：
-
-- 全部会话数、Token 总消耗、预估总费用
-- 缓存命中率、工具调用总数、活跃时长
-- 近 14 天用量柱状图（Token / 费用双轴）
-- Token 构成环形图、耗时构成环形图
-- 活跃度热力图（7 行 × N 周，可切 Token / 轮次 / 会话）
-- 技能加载、工具调用、命令执行排行
-- 会话列表（搜索 / 按工作区筛选 / 排序 / 跳转）
+All data comes **entirely from local files** — no network, no uploads.
 
 ---
 
-## 设置与国际化
+## Features
 
-总览页右上角齿轮按钮，分两组：
+### Side panel (live, per session)
 
-### 基础设置（panel.js 原生）
+Open the right panel (`Ctrl+Shift+B`); the top shows the current session's stats. The side card is **collapsed by default** — its header reads `<session name> · Context`; click to expand the full card.
 
-| 项 | 说明 |
+| Section | Content |
 |---|---|
-| **上下文窗口** | 200K / 1.0M / 2.0M，影响上下文占用百分比的计算 |
-| **自动刷新** | 是否随 sidecar 推送自动重绘 |
-| **紧凑模式** | 缩小卡片内边距和字号 |
+| **Session header** | Title, session ID, step count, last updated |
+| **KPI** | Token usage · Est. cost · Cache hit · Active time |
+| **Current Context** | Used / window size, percentage, colored stacked bar, 6-segment breakdown |
+| **Context Events** | Truncated-content (context compaction) records |
+| **File Activity** | Write / edit / read counts and character volume per file |
+| **Models** | Models used in this session and their call counts |
+| **File Types** | Grouped by extension |
+| **Hourly Activity** | 24-hour distribution |
+| **Command Execution** | Full command history, filterable by failed / slow / background, click a row to expand output |
 
-### 外观与行为（i18n 层追加）
+The card layout matches the overview page, with the grid collapsing to a single column.
 
-| 项 | 说明 |
-|---|---|
-| **语言 / Language** | **EN / 中文** 切换，默认英文 |
-| **界面缩放** | 90% / 100% / 110% |
-| **显示侧边卡片** | 是否注入右侧面板的当前会话卡片 |
-| **显示侧边栏入口** | 是否显示「Context Overview」菜单项 |
-| **恢复默认** | 一键还原全部设置（含语言回英文） |
+### Context Overview (sidebar "Context Overview")
 
-### 国际化实现
+A global view aggregating all sessions:
 
-翻译由独立文件 `sidecars/context-panel/i18n.js` 完成，作为一段独立脚本追加在
-`panel.js` 之后注入，**不修改 UI 源码中的任何字符串字面量**：
-
-- 通过 `TreeWalker` 遍历插件自身三个容器（总览浮层 / 侧边卡片 / 菜单项）内的文本节点
-- 用中→英词典按「长词优先」做替换，WeakMap 保存原文用于中文还原
-- `title` / `data-tip` / `placeholder` 属性同样翻译
-- `MutationObserver` + 2.5 秒定时兜底，保证 sidecar 重绘后的新内容也会被翻译
-- 只处理插件自己的 DOM，**绝不碰 Antigravity 宿主界面**
-
-所有设置保存在 `localStorage`（键前缀 `agy-context:`），重启后保留。
-语言键为 `agy-context:lang`，取值 `en` / `zh`。
+- Total sessions, total tokens, total estimated cost
+- Cache hit rate, total tool calls, active time
+- 14-day usage bars (Token / cost dual axis)
+- Token composition donut, time breakdown donut
+- Activity heatmap (7 rows × N weeks; switch Token / rounds / sessions)
+- Skills loaded, tool calls, command execution rankings
+- Session list (search / filter by workspace / sort / jump)
 
 ---
 
-## 安装
+## Settings & Internationalization
 
-**从 GitHub 直接安装**（无需上架 Marketplace，`agy` 会克隆仓库）：
+Gear button at the top-right of the overview, in two groups:
+
+### Basic settings (native to panel.js)
+
+| Item | Description |
+|---|---|
+| **Context window** | 200K / 1.0M / 2.0M — affects the context usage percentage |
+| **Auto refresh** | Whether to repaint on sidecar pushes |
+| **Compact mode** | Smaller card padding and font size |
+
+### Appearance & behavior (added by the i18n layer)
+
+| Item | Description |
+|---|---|
+| **Language** | **EN / 中文** switch, defaults to English |
+| **UI scale** | 90% / 100% / 110% |
+| **Side panel card** | Whether to inject the current-session card in the right panel |
+| **Sidebar menu** | Whether to show the "Context Overview" menu item |
+| **Reset** | Restore all defaults (including language back to English) |
+
+### How i18n works
+
+Translation lives in a standalone `sidecars/context-panel/i18n.js`, appended as a separate script **after** `panel.js` is injected, and **does not modify any string literal in the UI source**:
+
+- Walks text nodes inside the plugin's own four containers (overview overlay / side card / menu item / hover tooltip) with a `TreeWalker`
+- Replaces 中→英 via a longest-match-first dictionary; originals are kept in a `WeakMap` for restoring Chinese
+- Also translates `title` / `data-tip` / `placeholder` attributes
+- A synchronous `MutationObserver` microtask translates new content before the browser paints, so new content from the 5-second sidecar repaint never flashes Chinese
+- Only touches the plugin's own DOM, **never the Antigravity host UI**
+
+All settings are stored in `localStorage` (key prefix `agy-context:`) and persist across restarts. The language key is `agy-context:lang`, with values `en` / `zh`.
+
+---
+
+## Installation
+
+**Install directly from GitHub** (no Marketplace listing needed — `agy` clones the repo):
 
 ```bash
 agy plugin install https://github.com/richuff/agy-context
 ```
 
-在 CLI 交互界面里也可以用 `/plugin install https://github.com/richuff/agy-context`。
+Or use `/plugin install https://github.com/richuff/agy-context` inside the CLI.
 
-本地目录或本地仓库：
+From a local directory or repo:
 
 ```bash
 agy plugin install ./agy-context
 ```
 
-> 安装后可在 Antigravity App 的 **Customizations → Installed**，或 `agy plugin list` 中查看。
-> 更新版本：`agy plugin uninstall agy-context` 后重新安装；或直接重跑安装命令。
+> After installation, check Antigravity App → **Customizations → Installed**, or `agy plugin list`.
+> To update: `agy plugin uninstall agy-context` then reinstall, or just re-run the install command.
 
-安装后需在 `~/.gemini/config/config.json` 启用 sidecar：
+Enable the sidecar in `~/.gemini/config/config.json`:
 
 ```json
 {
@@ -107,117 +107,116 @@ agy plugin install ./agy-context
 }
 ```
 
-重启 Antigravity 生效。
+Restart Antigravity to take effect.
 
 ---
 
-## 发布
+## Publishing
 
-### 方式一：GitHub 直装（已可用，无需审核）
+### Option 1: Direct GitHub install (already available, no review)
 
-官方 `agy plugin install` 支持直接传 GitHub 仓库 URL。只要仓库是 public、根目录有合法的
-`plugin.json`，任何人执行下面命令即可安装：
+Official `agy plugin install` accepts a GitHub repo URL. As long as the repo is public and has a valid root `plugin.json`, anyone can run:
 
 ```bash
 agy plugin install https://github.com/richuff/agy-context
 ```
 
-### 方式二：上架 Antigravity Marketplace（需 Google 审核）
+### Option 2: Antigravity Marketplace (requires Google review)
 
-上架后用户可通过 `agy plugin install agy-context` 或在 App 的 **Marketplace** 标签里搜索安装。
+Once listed, users can install with `agy plugin install agy-context` or find it in the App's **Marketplace** tab.
 
-前置条件（本项目已满足）：
+Prerequisites (already met by this project):
 
-| 检查 | 状态 |
+| Check | Status |
 |---|---|
-| `agy plugin validate` 零 error | ✅ |
-| `plugin.json` 含 `name` / `displayName` / `description` / `version` / `logo` / `suggestedPrompts` / `author` | ✅ |
-| `README.md` + 内置 1:1 logo | ✅ |
-| 组件路径符合规范（skills/、sidecars/ 等） | ✅ |
+| `agy plugin validate` — zero errors | ✅ |
+| `plugin.json` has `name` / `displayName` / `description` / `version` / `logo` / `suggestedPrompts` / `author` | ✅ |
+| `README.md` + bundled 1:1 logo (`assets/logo.jpg`) | ✅ |
+| Component paths follow the spec (`skills/`, `sidecars/`, etc.) | ✅ |
 
-提交入口：[Antigravity Marketplace partner intake form](https://forms.gle/2EX5RFYPoJe1UgxR9)
+Submission: [Antigravity Marketplace partner intake form](https://forms.gle/2EX5RFYPoJe1UgxR9)
 
-> `agy plugin validate --strict` 会对根目录 `AGENTS.md` 报一条警告（"plugins load rules only from rules/"）。
-> 这是官方所述的**多工具仓库预期行为**——`AGENTS.md` 是给贡献者看的常驻硬约束，
-> 故意不放入 `rules/` 以免注入到最终用户会话。按官方 CI 过滤方案排除该文件后，
-> 发布阻塞项为 0。
+> `agy plugin validate --strict` reports one warning about a root `AGENTS.md` ("plugins load rules only from rules/").
+> This is the **expected behavior for a multi-tool repo** per official docs — `AGENTS.md` is a standing constraint for contributors,
+> intentionally kept out of `rules/` so it is not injected into end-user sessions. With the official CI filter excluding that file,
+> there are 0 blocking issues.
 
-### 发版流程
+### Release flow
 
-1. 改 `plugin.json` 的 `version`（SemVer）
-2. 跑 `agy plugin validate .` 与 `node test/test-stats.mjs`
+1. Bump `version` in `plugin.json` (SemVer)
+2. Run `agy plugin validate .` and `node test/test-stats.mjs`
 3. `git commit` + `git tag v3.0.1` + `git push --tags`
-4. 用户卸载重装即可拿到新版本
+4. Users uninstall/reinstall to get the new version
 
 ---
 
-## 数据来源
+## Data Sources
 
-全部读自 `~/.gemini/antigravity/` 下的本地文件：
+Everything is read from local files under `~/.gemini/antigravity/`:
 
-| 数据 | 来源 |
+| Data | Source |
 |---|---|
-| 会话列表、标题、步数 | `conversation_summaries.db` |
-| Token 用量 | `brain/<id>/.system_generated/logs/transcript.jsonl` 的 `input_tokens` / `cache_read_tokens` / `output_tokens` |
-| 工具调用 | transcript 的 `tool_calls` |
-| 命令与输出 | `tool_calls` 的 `run_command` + `GENERIC` 记录 |
-| 文件操作 | `tool_calls` 的 `write_file` / `edit_file` / `read_file` |
-| 上下文构成 | 按各类消息的字符占比映射到实际 token |
-| 上下文事件 | transcript 的 `truncated_fields` |
-| 模型名称 | `conversations/<id>.db` 的 `gen_metadata` |
+| Session list, titles, steps | `conversation_summaries.db` |
+| Token usage | `brain/<id>/.system_generated/logs/transcript.jsonl` → `input_tokens` / `cache_read_tokens` / `output_tokens` |
+| Tool calls | transcript `tool_calls` |
+| Commands & output | `tool_calls` `run_command` + `GENERIC` records |
+| File operations | `tool_calls` `write_file` / `edit_file` / `read_file` |
+| Context composition | Mapped to real tokens by each message type's character share |
+| Context events | transcript `truncated_fields` |
+| Model names | `conversations/<id>.db` `gen_metadata` |
 
-### 上下文怎么算
+### How context usage is computed
 
-**已用量 = 最后一次请求的 `input_tokens + cache_read_tokens`**
+**Used = `input_tokens + cache_read_tokens` of the last request**
 
-这是精确值。分项（系统提示词 / 工具定义 / 用户消息 / 助手消息 / 模型思考 / 工具结果）按 transcript 中各类消息的字符数占比推算，是估算值。
+This is exact. The breakdown (system prompt / tool definitions / user messages / assistant messages / model thinking / tool results) is estimated from the character share of each message type in the transcript.
 
-### 耗时怎么算
+### How time is computed
 
-取相邻事件时间戳的间隔，按**后一个事件的类型**归类：
+Take the gap between adjacent event timestamps and classify it by **the type of the following event**:
 
-| 后一个事件 | 归类 |
+| Following event | Classified as |
 |---|---|
-| `GENERIC` | 工具执行 |
-| `PLANNER_RESPONSE` + thinking | 模型思考 |
-| `PLANNER_RESPONSE` 无 thinking | 模型回复 |
-| `SYSTEM_MESSAGE` | 系统开销 |
-| `USER_INPUT` | 等待输入 |
+| `GENERIC` | Tool execution |
+| `PLANNER_RESPONSE` + thinking | Model thinking |
+| `PLANNER_RESPONSE` without thinking | Model reply |
+| `SYSTEM_MESSAGE` | System overhead |
+| `USER_INPUT` | Awaiting input |
 
-间隔 > 5 分钟的视为空闲，不计入活跃时长。
+Gaps > 5 minutes are treated as idle and excluded from active time.
 
 ---
 
-## 隐私
+## Privacy
 
-所有路径在展示前经过脱敏：
+All paths are redacted before display:
 
-| 原始 | 显示 |
+| Raw | Shown |
 |---|---|
 | `C:\Users\<user>\...` | `~\...` |
 | `C:\Users\<user>\.gemini\antigravity\brain\<uuid>\scratch\x.exe` | `~\…\scratch\x.exe` |
 | `D:\Mygit\foo\bar.hpp` | `…\foo\bar.hpp` |
 
-- 主目录折叠为 `~`
-- 深层路径压缩为 `…\最后两段`
-- 盘符路径去掉盘符
-- 文件列表只显示文件名
+- Home directory collapsed to `~`
+- Deep paths compressed to `…\last two segments`
+- Drive letters removed
+- File lists show only filenames
 
-侧边面板不显示 `.gemini` 内部路径。
+The side panel never shows internal `.gemini` paths.
 
 ---
 
-## 费用估算
+## Cost Estimation
 
-按公开 API 单价计算，**不是官方账单**：
+Computed from public API pricing — **not an official bill**:
 
-| 项 | 单价 |
+| Item | Unit price |
 |---|---|
-| 输入 | $1.25 / M tokens |
-| 输出 | $10 / M tokens |
-| 缓存读取 | $0.31 / M tokens |
+| Input | $1.25 / M tokens |
+| Output | $10 / M tokens |
+| Cache read | $0.31 / M tokens |
 
-可用环境变量覆盖：
+Override via environment variables:
 
 ```bash
 AGY_PRICE_IN=1.25
@@ -227,34 +226,36 @@ AGY_PRICE_CACHE=0.31
 
 ---
 
-## 技术实现
+## Technical Implementation
 
-| 组件 | 说明 |
+| Component | Description |
 |---|---|
-| `plugin.json` | 插件清单 |
-| `sidecars/context-panel/sidecar.json` | sidecar 定义 |
-| `sidecars/context-panel/main.mjs` | CDP 客户端，把面板注入 Antigravity 页面 |
-| `sidecars/context-panel/panel.js` | 前端 UI（总览浮层 + 侧边卡片） |
-| `scripts/stats.mjs` | 统计计算引擎 |
-| `skills/agy-stats/SKILL.md` | 技能文档 |
+| `plugin.json` | Plugin manifest |
+| `sidecars/context-panel/sidecar.json` | Sidecar definition |
+| `sidecars/context-panel/main.mjs` | CDP client that injects the panel into the Antigravity page |
+| `sidecars/context-panel/panel.js` | Front-end UI (overview overlay + side card) |
+| `sidecars/context-panel/i18n.js` | Standalone i18n DOM post-processing layer |
+| `scripts/stats.mjs` | Statistics engine |
+| `skills/agy-stats/SKILL.md` | Skill documentation |
+| `assets/logo.jpg` | Plugin logo (1:1) |
 
-### 注入方式
+### Injection
 
-sidecar 通过 CDP 连接 Antigravity：
+The sidecar connects to Antigravity over CDP:
 
-1. 读 `%APPDATA%\Antigravity\DevToolsActivePort` 拿调试端口
-2. WebSocket 连 `/json/version` 拿 `webSocketDebuggerUrl`
-3. `Target.attachToTarget` + `Runtime.evaluate` 注入 `panel.js`
-4. 每 5 秒推送一次最新统计数据
+1. Read `%APPDATA%\Antigravity\DevToolsActivePort` for the debug port
+2. WebSocket to `/json/version` to get `webSocketDebuggerUrl`
+3. `Target.attachToTarget` + `Runtime.evaluate` to inject `panel.js`
+4. Push the latest stats every 5 seconds
 
-页面加载后：
+After the page loads:
 
-- 在侧边栏插入「上下文总览」菜单项
-- 在右侧面板注入当前会话卡片
+- Insert the "Context Overview" menu item in the sidebar
+- Inject the current-session card into the right panel (collapsed by default)
 
-### 为什么不用官方 Sidecar WebUI
+### Why not the official Sidecar WebUI
 
-`sidecar.json` 支持 `has_web_ui` + `ui_config`，官方会创建 iframe 挂载：
+`sidecar.json` supports `has_web_ui` + `ui_config`; the official path mounts an iframe:
 
 ```html
 <div data-testid="sidecar-iframe-slot"
@@ -262,7 +263,7 @@ sidecar 通过 CDP 连接 Antigravity：
      data-visible="false">
 ```
 
-但入口 UI 被 feature flag 挡住：
+But the entry UI is behind a feature flag:
 
 ```js
 pluginSidebarSection: {
@@ -271,27 +272,33 @@ pluginSidebarSection: {
 }
 ```
 
-该 flag 由 Google 的 Mendel 实验系统服务端下发，本地无法开启。所以采用 CDP 注入方案。
+That flag is served by Google's Mendel experiment system and cannot be enabled locally, so CDP injection is used instead.
 
 ---
 
-## 兼容性
+## Compatibility
 
-| 项 | 版本 |
+| Item | Version |
 |---|---|
-| Antigravity | 2.32.1（实测） |
-| Node.js | 22+（需要 `node:sqlite`） |
-| 平台 | Windows（其他平台未测试） |
+| Antigravity | 2.32.1 (tested) |
+| Node.js | 22+ (requires `node:sqlite`) |
+| Platform | Windows (other platforms untested) |
 
 ---
 
-## 已知限制
+## Known Limitations
 
-- **模型名称**在部分会话中为空（transcript 未记录），此时从 `gen_metadata` 读取
-- **上下文分项**是估算值，只有总量精确
-- **无真实压缩事件**：Antigravity 不记录上下文压缩，只能用 `truncated_fields` 近似
-- **子 Agent 标题**多为「(未命名)」，因为 Antigravity 没有给它们命名
-- **行数变化**（`+16/-3`）无法计算，只能给出字符量
+- **Model name** is empty in some sessions (not recorded in transcript); falls back to `gen_metadata`
+- **Context breakdown** is estimated; only the total is exact
+- **No real compaction events**: Antigravity doesn't record context compaction; `truncated_fields` is only an approximation
+- **Sub-agent titles** are mostly "(Untitled)" because Antigravity doesn't name them
+- **Line-count delta** (`+16/-3`) can't be computed; only character volume is available
+
+---
+
+## Acknowledgements
+
+The overview dashboard UI design and layout are inspired by and adapted from [dsh-context](https://github.com/deepseek-ai/dsh-context). Special thanks to the original project for the design inspiration.
 
 ---
 

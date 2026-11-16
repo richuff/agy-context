@@ -15,6 +15,7 @@ test/_*.mjs
 *.tmp
 *.db
 *.db-journal
+settings.json
 node_modules/
 .gemini/
 .DS_Store

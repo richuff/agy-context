@@ -5,11 +5,11 @@
   "version": "3.0.0",
   "description": "Local-only Antigravity session analytics: Token usage, context window consumption, time breakdown, tool calls, command history and file activity — shown in the side panel and a full overview dashboard.",
   "license": "MIT",
-  "logo": "assets/logo.svg",
+  "logo": "assets/logo.jpg",
   "suggestedPrompts": [
-    "统计一下我最近的会话使用情况",
-    "我改了哪些文件？最多用的是什么工具？",
-    "当前会话的上下文用了多少？"
+    "Show stats for my recent sessions",
+    "Which files were modified? What are the most used tools?",
+    "How much context window is this session using?"
   ],
   "author": {
     "name": "richuff",

@@ -1,5 +1,6 @@
 /**
  * panel.js — Antigravity 会话统计 v3（侧边面板 + 上下文总览）
+ * 总览 UI 设计与布局借鉴参考自 dsh-context 项目。
  *
  * 两种形态共存：
  *   1. 【侧边面板】在官方 right side panel 的「新标签页」界面注入当前会话统计卡片
@@ -14,7 +15,7 @@
  * 当前会话通过 URL `/c/<conversationId>` 识别。数据由 main.mjs 通过占位符注入（注释里勿写占位符本身）。
  */
 (() => {
-  const VER = '3.0.3';
+  const VER = '3.0.14';
   const ROOT_ID = '__agy_ctx_root_v3__';
   const ITEM_ID = '__agy_ctx_item_v3__';
   const SIDE_ID = '__agy_ctx_side_v3__';
@@ -23,6 +24,7 @@
 
   /* ---------- 已注入：只推数据 ---------- */
   if (document.getElementById(ROOT_ID)) {
+    ensureStyles();
     if (window.__agyCtxVer === VER && window.__agyCtxUpdate) {
       try { window.__agyCtxUpdate(__PAYLOAD__); } catch (e) { /* ignore */ }
       return 'already-injected';
@@ -48,6 +50,50 @@
   const EXPANDED = {};
   const EXEC_EXPANDED = {};
   const cleanups = [];
+  // 左侧 sidebox 默认折叠；用户手动展开/收起后记住，且不被 5 秒重绘重置
+  const SIDE_COLLAPSE_KEY = 'agy-context:side-collapsed';
+  let sideCollapsed = true;
+
+  /* ==========================================================================
+     工具函数与跨端口持久化
+     ========================================================================== */
+  const readSetting = (k, def) => {
+    try {
+      if (window.__agySettings && window.__agySettings[k] != null) {
+        const val = String(window.__agySettings[k]);
+        try { localStorage.setItem(k, val); } catch (e) {}
+        return val;
+      }
+    } catch (e) {}
+    try { const v = localStorage.getItem(k); if (v !== null) return v; } catch (e) {}
+    try {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + k.replace(/[-:]/g, '_') + '=([^;]*)'));
+      if (m) {
+        const val = decodeURIComponent(m[1]);
+        try { localStorage.setItem(k, val); } catch (e) {}
+        return val;
+      }
+    } catch (e) {}
+    return def;
+  };
+
+  const writeSetting = (k, v) => {
+    try { localStorage.setItem(k, v); } catch (e) {}
+    try {
+      document.cookie = k.replace(/[-:]/g, '_') + '=' + encodeURIComponent(v) + '; path=/; max-age=31536000; SameSite=Lax';
+    } catch (e) {}
+    try {
+      window.__agySettings = window.__agySettings || {};
+      window.__agySettings[k] = v;
+      window.__actxPendingSettings = window.__actxPendingSettings || {};
+      window.__actxPendingSettings[k] = v;
+    } catch (e) {}
+  };
+
+  try {
+    const v = readSetting(SIDE_COLLAPSE_KEY, null);
+    if (v !== null) sideCollapsed = v === '1';
+  } catch (e) { /* ignore */ }
 
   /* ==========================================================================
      工具函数
@@ -137,6 +183,15 @@
   };
   const icon = (k) => '<svg class="agy-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + (IC[k] || '') + '</svg>';
 
+  const LOGO_DATA = '__LOGO__';
+  const LOGO_SRC = LOGO_DATA.startsWith('data:image') ? LOGO_DATA : '';
+  const logoMiHtml = () => LOGO_SRC
+    ? '<img class="agy-mi-logo" src="' + LOGO_SRC + '" alt="logo" />'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + IC.chart + '</svg>';
+  const logoHdHtml = () => LOGO_SRC
+    ? '<img class="agy-hd-logo-img" src="' + LOGO_SRC + '" alt="logo" />'
+    : icon('chart');
+
   const PREF_KEY = 'agy-context:prefs';
   const DEFAULT_PREFS = { winSize: 1000000, autoRefresh: true, compact: false };
   let PREFS = Object.assign({}, DEFAULT_PREFS);
@@ -148,9 +203,16 @@
   /* ==========================================================================
      样式
      ========================================================================== */
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
+  function ensureStyles() {
+    let st = document.getElementById(STYLE_ID);
+    if (!st) {
+      st = document.createElement('style');
+      st.id = STYLE_ID;
+      document.head.appendChild(st);
+    }
+    st.textContent = STYLES_TEXT;
+  }
+  const STYLES_TEXT = `
 /* 旧版本元素隐藏 */
 #__agy_context_root__,#__agy_ctx_menu_item__,#__agy_ctx_side__{display:none!important}
 
@@ -168,7 +230,7 @@
   backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:18px}
 .agy-mask.on{display:flex;animation:agyF .14s ease}
 @keyframes agyF{from{opacity:0}to{opacity:1}}
-.agy-box{width:1560px;max-width:100%;height:94vh;display:flex;flex-direction:column;background:var(--c-page);
+.agy-box{width:1360px;max-width:94vw;height:90vh;display:flex;flex-direction:column;background:var(--c-page);
   border-radius:16px;border:1px solid var(--c-line);box-shadow:0 30px 80px rgba(16,18,24,.28),0 2px 8px rgba(16,18,24,.06);
   animation:agyP .2s cubic-bezier(.2,.9,.3,1.1);overflow:hidden}
 @keyframes agyP{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
@@ -176,7 +238,8 @@
   border-bottom:1px solid var(--c-line);flex:0 0 auto;gap:12px}
 .agy-hd-l{display:flex;align-items:center;gap:10px;min-width:0}
 .agy-hd-logo{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff}
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;overflow:hidden;flex:0 0 28px}
+.agy-hd-logo img, .agy-hd-logo-img{width:28px;height:28px;border-radius:8px;object-fit:cover;display:block}
 .agy-hd-t{font-size:15px;font-weight:680;letter-spacing:-.1px;display:flex;align-items:center;gap:7px}
 .agy-hd-ver{font-size:10px;font-weight:600;color:var(--c-dim);background:var(--c-soft);
   border:1px solid var(--c-line);border-radius:5px;padding:1px 6px;letter-spacing:0;font-variant-numeric:tabular-nums}
@@ -214,7 +277,7 @@
 
 /* 紧凑模式 */
 .agy-compact .agy-body{padding:10px 12px 14px;gap:8px}
-.agy-compact .agy-card{padding:9px 10px}
+.agy-box.agy-compact .agy-card{padding:9px 10px}
 .agy-compact .agy-card-t{font-size:11px}
 .agy-hd-s{font-size:11px;color:var(--c-dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .agy-hd-r{display:flex;align-items:center;gap:8px}
@@ -229,21 +292,21 @@
   border-radius:8px;display:flex;align-items:center;justify-content:center}
 .agy-x:hover{background:var(--c-soft);color:var(--c-fg)}
 
-.agy-body{flex:1;overflow-y:auto;padding:14px 16px 20px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
-  gap:12px;align-content:start}
-.agy-body::-webkit-scrollbar,.agy-scroll::-webkit-scrollbar{width:8px;height:8px}
-.agy-body::-webkit-scrollbar-thumb,.agy-scroll::-webkit-scrollbar-thumb{background:#d6dae2;border-radius:4px}
-.s3{grid-column:span 3}.s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}
-.s7{grid-column:span 7}.s8{grid-column:span 8}.s12{grid-column:1/-1}
-@media (max-width:1180px){.s3{grid-column:span 6}.s4,.s5,.s7,.s8{grid-column:span 6}}
-@media (max-width:820px){.s3,.s4,.s5,.s6,.s7,.s8{grid-column:1/-1}}
+.agy-body{flex:1;overflow-y:auto;padding:14px 16px 20px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;align-content:start;scrollbar-width:none;-ms-overflow-style:none}
+.agy-body::-webkit-scrollbar{display:none;width:0;height:0}
+.agy-scroll::-webkit-scrollbar{width:8px;height:8px}
+.agy-scroll::-webkit-scrollbar-thumb{background:#d6dae2;border-radius:4px}
+.agy-box .s3{grid-column:span 3}.agy-box .s4{grid-column:span 4}.agy-box .s5{grid-column:span 5}.agy-box .s6{grid-column:span 6}
+.agy-box .s7{grid-column:span 7}.agy-box .s8{grid-column:span 8}.agy-box .s12{grid-column:1/-1}
+@media (max-width:1180px){.agy-box .s3{grid-column:span 6}.agy-box .s4,.agy-box .s5,.agy-box .s7,.agy-box .s8{grid-column:span 6}}
+@media (max-width:820px){.agy-box .s3,.agy-box .s4,.agy-box .s5,.agy-box .s6,.agy-box .s7,.agy-box .s8{grid-column:1/-1}}
 .agy-sec{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:650;color:var(--c-dim);
   letter-spacing:.6px;margin:6px 2px -2px}
 .agy-sec::after{content:"";flex:1;height:1px;background:var(--c-line)}
 
-.agy-card{background:var(--c-card);border:1px solid var(--c-line);border-radius:12px;padding:13px 15px;
+.agy-box .agy-card{background:var(--c-card);border:1px solid var(--c-line);border-radius:12px;padding:13px 15px;
   display:flex;flex-direction:column;min-width:0;transition:box-shadow .18s}
-.agy-card:hover{box-shadow:0 4px 18px rgba(16,18,24,.05)}
+.agy-box .agy-card:hover{box-shadow:0 4px 18px rgba(16,18,24,.05)}
 .agy-ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;min-height:22px}
 .agy-ct{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:660;white-space:nowrap}
 .agy-ct .agy-ic{color:var(--c-mut)}
@@ -452,6 +515,7 @@
 #${ITEM_ID}{display:flex}
 #${ITEM_ID} .agy-mi{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:0 0 16px;opacity:.75}
 #${ITEM_ID} .agy-mi svg{width:15px;height:15px;display:block}
+#${ITEM_ID} .agy-mi img, #${ITEM_ID} .agy-mi-logo{width:16px;height:16px;border-radius:3px;object-fit:cover;display:block}
 
 /* 浮动提示 */
 #${TIP_ID}{position:fixed;z-index:2147483600;pointer-events:none;background:rgba(17,19,24,.94);color:#f3f4f6;border-radius:8px;
@@ -462,72 +526,97 @@
 #${TIP_ID} .d{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:0}
 
 /* ---------- 侧边面板 ---------- */
-#${SIDE_ID}{margin:0 0 14px}
-#${SIDE_ID} .agy-sd{display:flex;flex-direction:column;gap:9px}
-#${SIDE_ID} .agy-sd-head{display:flex;align-items:flex-start;gap:8px;padding:0 0 8px;border-bottom:1px solid var(--c-line)}
-#${SIDE_ID} .agy-sd-head-m{flex:1;min-width:0}
-#${SIDE_ID} .agy-sd-ht{font-size:12.5px;font-weight:650;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-#${SIDE_ID} .agy-sd-hm{font-size:10px;color:var(--c-dim);margin-top:3px}
-#${SIDE_ID} .agy-sd-btn{flex:0 0 auto;border:1px solid var(--c-line);background:var(--c-card);border-radius:7px;padding:3px 9px;
-  font:inherit;font-size:10.5px;color:var(--c-mut);cursor:pointer;transition:all .12s;display:inline-flex;align-items:center;gap:4px}
-#${SIDE_ID} .agy-sd-btn:hover{border-color:#93b4f6;color:var(--c-accent)}
-#${SIDE_ID} .agy-sd-btn .agy-ic{width:12px;height:12px;flex-basis:12px}
-#${SIDE_ID} .agy-sd-kpis{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-#${SIDE_ID} .agy-sd-k{background:var(--c-soft);border:1px solid transparent;border-radius:9px;padding:8px 10px;cursor:default;transition:all .15s}
-#${SIDE_ID} .agy-sd-k:hover{background:var(--c-card);border-color:var(--c-line);box-shadow:0 4px 14px rgba(16,18,24,.07);transform:translateY(-1px)}
-#${SIDE_ID} .agy-sd-kv{font-size:16px;font-weight:720;letter-spacing:-.4px;line-height:1.2}
-#${SIDE_ID} .agy-sd-kv.acc{background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-#${SIDE_ID} .agy-sd-kl{font-size:10px;color:var(--c-mut);margin-top:1px}
-#${SIDE_ID} .agy-sd-kd{font-size:9.5px;color:var(--c-dim)}
-#${SIDE_ID} .agy-sd-card{background:var(--c-card);border:1px solid var(--c-line);border-radius:10px;padding:10px 11px}
-#${SIDE_ID} .agy-sd-ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-#${SIDE_ID} .agy-sd-ct{font-size:11.5px;font-weight:650;display:flex;align-items:center;gap:5px}
-#${SIDE_ID} .agy-sd-ct .agy-ic{width:13px;height:13px;flex-basis:13px;color:var(--c-mut)}
-#${SIDE_ID} .agy-sd-cx{font-size:10px;color:var(--c-dim)}
+#${SIDE_ID}{width:100%!important;max-width:36rem!important;box-sizing:border-box!important;min-width:0!important;align-self:stretch!important;margin:0 auto 14px!important;container-type:inline-size}
+#${SIDE_ID} .agy-sd{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;display:flex!important;flex-direction:column!important;gap:9px!important}
+/* 折叠标题栏：默认只显示这一行，点击展开/收起完整内容 */
+#${SIDE_ID} .agy-sd-bar{display:flex!important;align-items:center!important;gap:7px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;background:var(--c-card)!important;border:1px solid var(--c-line)!important;border-radius:9px!important;padding:8px 10px!important;font:inherit!important;font-size:11.5px!important;font-weight:650!important;color:var(--c-fg)!important;text-align:left!important;cursor:pointer!important;transition:border-color .12s,background .12s!important}
+#${SIDE_ID} .agy-sd-bar:hover{border-color:#93b4f6!important;color:var(--c-accent)!important}
+#${SIDE_ID} .agy-sd-caret{flex:0 0 auto!important;font-size:10px!important;color:var(--c-mut)!important;transition:transform .15s!important;display:inline-block!important}
+#${SIDE_ID} .agy-sd-bar.open .agy-sd-caret{transform:rotate(90deg)!important}
+#${SIDE_ID} .agy-sd-bar-t{flex:1 1 auto!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+#${SIDE_ID} .agy-sd-body{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;display:flex!important;flex-direction:column!important;gap:9px!important;max-height:calc(100vh - 120px)!important;overflow-y:auto!important;overflow-x:hidden!important;padding-right:2px!important}
+#${SIDE_ID} .agy-sd-body.collapsed{display:none!important}
+#${SIDE_ID} .agy-sd-content{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;display:flex!important;flex-direction:column!important;gap:9px!important}
+
+#${SIDE_ID} .agy-sd-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;width:100%!important;box-sizing:border-box!important;min-width:0!important;padding:0 0 8px!important;border-bottom:1px solid var(--c-line)!important}
+#${SIDE_ID} .agy-sd-head-m{flex:1 1 auto!important;min-width:0!important;overflow:hidden!important}
+#${SIDE_ID} .agy-sd-ht{font-size:12.5px!important;font-weight:650!important;line-height:1.35!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#${SIDE_ID} .agy-sd-hm{font-size:10px!important;color:var(--c-dim)!important;margin-top:3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#${SIDE_ID} .agy-sd-btn{flex:0 0 auto!important;border:1px solid var(--c-line)!important;background:var(--c-card)!important;border-radius:7px!important;padding:3px 9px!important;font:inherit!important;font-size:10.5px!important;color:var(--c-mut)!important;cursor:pointer!important;transition:all .12s!important;display:inline-flex!important;align-items:center!important;gap:4px!important;white-space:nowrap!important}
+#${SIDE_ID} .agy-sd-btn:hover{border-color:#93b4f6!important;color:var(--c-accent)!important}
+#${SIDE_ID} .agy-sd-btn .agy-ic{width:12px!important;height:12px!important;flex-basis:12px!important}
+
+/* 动态自适应 KPI 网格：随着宽度大小动态自适应变化 */
+#${SIDE_ID} .agy-sd-kpis{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(125px,1fr))!important;gap:7px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important}
+@container (min-width: 480px){
+  #${SIDE_ID} .agy-sd-kpis{grid-template-columns:repeat(4,1fr)!important}
+}
+@container (max-width: 479px) and (min-width: 250px){
+  #${SIDE_ID} .agy-sd-kpis{grid-template-columns:repeat(2,1fr)!important}
+}
+@container (max-width: 249px){
+  #${SIDE_ID} .agy-sd-kpis{grid-template-columns:1fr!important}
+}
+
+#${SIDE_ID} .agy-sd-k{background:var(--c-soft)!important;border:1px solid transparent!important;border-radius:9px!important;padding:8px 10px!important;cursor:default!important;transition:all .15s!important;box-sizing:border-box!important;min-width:0!important;overflow:hidden!important}
+#${SIDE_ID} .agy-sd-k:hover{background:var(--c-card)!important;border-color:var(--c-line)!important;box-shadow:0 4px 14px rgba(16,18,24,.07)!important;transform:translateY(-1px)!important}
+#${SIDE_ID} .agy-sd-kv{font-size:16px!important;font-weight:720!important;letter-spacing:-.4px!important;line-height:1.2!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#${SIDE_ID} .agy-sd-kv.acc{background:linear-gradient(135deg,#3b82f6,#8b5cf6)!important;-webkit-background-clip:text!important;background-clip:text!important;-webkit-text-fill-color:transparent!important}
+#${SIDE_ID} .agy-sd-kl{font-size:10px!important;color:var(--c-mut)!important;margin-top:1px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#${SIDE_ID} .agy-sd-kd{font-size:9.5px!important;color:var(--c-dim)!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#${SIDE_ID} .agy-sd-card{background:var(--c-card)!important;border:1px solid var(--c-line)!important;border-radius:10px!important;padding:10px 11px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+#${SIDE_ID} .agy-sd-ch{display:flex!important;align-items:center!important;justify-content:space-between!important;margin-bottom:8px!important}
+#${SIDE_ID} .agy-sd-ct{font-size:11.5px!important;font-weight:650!important;display:flex!important;align-items:center!gap:5px!important}
+#${SIDE_ID} .agy-sd-ct .agy-ic{width:13px!important;height:13px!important;flex-basis:13px!important;color:var(--c-mut)!important}
+#${SIDE_ID} .agy-sd-cx{font-size:10px!important;color:var(--c-dim)!important}
+
 #${SIDE_ID} .agy-dnw{gap:10px}
 #${SIDE_ID} .agy-dn-v{font-size:12px}
 #${SIDE_ID} .agy-dn-l{font-size:8.5px}
-#${SIDE_ID} .agy-leggrid{grid-template-columns:1fr;gap:1px}
-#${SIDE_ID} .agy-leg{padding:3px 6px;gap:6px;align-items:center}
+#${SIDE_ID} .agy-leggrid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(130px,1fr))!important;gap:2px!important;width:100%!important;box-sizing:border-box!important}
+#${SIDE_ID} .agy-leg{padding:3px 6px!important;gap:6px!important;align-items:center!important;min-width:0!important;box-sizing:border-box!important}
 #${SIDE_ID} .agy-leg-d{width:7px;height:7px;flex-basis:7px;margin-top:0}
-#${SIDE_ID} .agy-leg-m{display:flex;align-items:center;gap:6px}
+#${SIDE_ID} .agy-leg-m{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
 #${SIDE_ID} .agy-leg-r{flex:1;min-width:0}
-#${SIDE_ID} .agy-leg-n{font-size:10.5px;font-weight:500}
+#${SIDE_ID} .agy-leg-n{font-size:10.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 #${SIDE_ID} .agy-leg-p{font-size:10px;font-weight:600;flex:0 0 38px;text-align:right}
-#${SIDE_ID} .agy-leg-v{font-size:9.5px;flex:0 0 auto}
+#${SIDE_ID} .agy-leg-v{font-size:9.5px;flex:0 0 auto;white-space:nowrap}
 #${SIDE_ID} .agy-big-v{font-size:17px}
 #${SIDE_ID} .agy-big-u{font-size:10px}
 #${SIDE_ID} .agy-big-p{font-size:11.5px}
 #${SIDE_ID} .agy-big{margin-bottom:7px}
-#${SIDE_ID} .agy-stk{height:8px;margin-bottom:6px}
-#${SIDE_ID} .agy-sd-leg2{display:grid;grid-template-columns:1fr 1fr;gap:0 6px}
-/* ---- 侧边面板：主界面卡片栅格塌成单列 + 字号缩小 ---- */
-#${SIDE_ID} .agy-card{grid-column:1/-1!important;padding:10px 11px;border-radius:9px}
+#${SIDE_ID} .agy-stk{height:8px;margin-bottom:6px;width:100%!important;box-sizing:border-box!important}
+#${SIDE_ID} .agy-sd-leg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:0 6px}
+/* ---- 侧边面板：卡片与列表自适应 ---- */
+#${SIDE_ID} .agy-card{grid-column:1/-1!important;padding:10px 11px!important;border-radius:9px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;overflow:hidden!important}
 #${SIDE_ID} .agy-card-h{margin-bottom:8px;gap:6px}
 #${SIDE_ID} .agy-card-t{font-size:10.5px}
 #${SIDE_ID} .agy-card-x{font-size:9px}
-#${SIDE_ID} .agy-kgrid{grid-template-columns:1fr 1fr;gap:7px}
-#${SIDE_ID} .agy-leggrid{grid-template-columns:1fr;gap:1px}
-#${SIDE_ID} .agy-big-v{font-size:16px}
-#${SIDE_ID} .agy-big-u{font-size:9px}
-#${SIDE_ID} .agy-big-p{font-size:11px}
-#${SIDE_ID} .agy-list{max-height:200px}
-#${SIDE_ID} .agy-csum{grid-template-columns:1fr 1fr;gap:6px}
-#${SIDE_ID} .agy-heat{grid-template-columns:auto repeat(auto-fill,minmax(0,1fr))!important}
+#${SIDE_ID} .agy-kgrid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))!important;gap:7px!important;width:100%!important;box-sizing:border-box!important}
+#${SIDE_ID} .agy-list{max-height:200px;width:100%!important;box-sizing:border-box!important;overflow-x:hidden!important}
+#${SIDE_ID} .agy-csum{grid-template-columns:1fr 1fr;gap:6px;width:100%!important;box-sizing:border-box!important}
+#${SIDE_ID} .agy-heat{grid-template-columns:auto repeat(auto-fill,minmax(0,1fr))!important;width:100%!important;box-sizing:border-box!important}
 #${SIDE_ID} .agy-sec{font-size:10.5px;margin:12px 0 7px}
 #${SIDE_ID} .agy-empty{font-size:9.5px;padding:8px 0}
-#${SIDE_ID} .agy-scroll{max-height:180px}
-#${SIDE_ID} .agy-sgrid{grid-template-columns:1fr}
+#${SIDE_ID} .agy-scroll{max-height:180px;width:100%!important;box-sizing:border-box!important;overflow-x:hidden!important}
+#${SIDE_ID} .agy-sgrid{grid-template-columns:1fr;width:100%!important;box-sizing:border-box!important}
 /* 侧边面板分节标题 */
-#${SIDE_ID} .agy-sd-sec{font-size:9px;font-weight:660;color:var(--c-dim);letter-spacing:.6px;
-text-transform:uppercase;margin:10px 0 6px;display:flex;align-items:center;gap:5px}
+#${SIDE_ID} .agy-sd-sec{font-size:9px;font-weight:660;color:var(--c-dim);letter-spacing:.6px;text-transform:uppercase;margin:10px 0 6px;display:flex;align-items:center;gap:5px;width:100%!important;box-sizing:border-box!important}
 #${SIDE_ID} .agy-sd-sec::after{content:"";flex:1;height:1px;background:var(--c-line)}
 #${SIDE_ID} .agy-sd-sec:first-child{margin-top:2px}
 #${SIDE_ID} .agy-sd-leg2 .agy-leg-v{display:none}
-#${SIDE_ID} .agy-rk{max-height:none;margin:0;padding:0}
-#${SIDE_ID} .agy-rk-r{font-size:10.5px;padding:4px 6px 6px}
+#${SIDE_ID} .agy-rk{max-height:none;margin:0;padding:0;width:100%!important;box-sizing:border-box!important}
+#${SIDE_ID} .agy-rk-r{font-size:10.5px;padding:4px 6px 6px;width:100%!important;box-sizing:border-box!important}
 #${SIDE_ID} .agy-rk-v{font-size:10px}
 #${SIDE_ID} .agy-sd-empty{font-size:11px;color:var(--c-dim);padding:10px 0}
+
+#${SIDE_ID} .agy-cmd-row,
+#${SIDE_ID} .agy-ev-row,
+#${SIDE_ID} .agy-f-row{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important}
+#${SIDE_ID} .agy-cmd-txt,
+#${SIDE_ID} .agy-ev-d,
+#${SIDE_ID} .agy-f-path{min-width:0!important;flex:1 1 auto!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+#${SIDE_ID} .agy-ft{width:100%!important;max-width:100%!important;box-sizing:border-box!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
 
 /* ---------- 深色 ---------- */
 body.theme-dark .agy-scope,body[class*="theme-dark"] .agy-scope,body.vscode-dark .agy-scope{
@@ -535,7 +624,7 @@ body.theme-dark .agy-scope,body[class*="theme-dark"] .agy-scope,body.vscode-dark
   --c-soft:#22242a;--c-hover:#262a33;--c-track:#2a2d34;--c-heat0:#262830;--c-accent:#60a5fa}
 body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:rgba(16,185,129,.15)}
 `;
-  document.head.appendChild(style);
+  ensureStyles();
 
   /* ==========================================================================
      浮动提示 + 交互委托（环形图 / 堆叠条 / 图例联动）
@@ -1282,7 +1371,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
   root.className = 'agy-scope';
   root.innerHTML =
     '<div class="agy-mask" data-mask><div class="agy-box" role="dialog" aria-modal="true">' +
-      '<div class="agy-hd"><div class="agy-hd-l"><div class="agy-hd-logo">' + icon('chart') + '</div>' +
+      '<div class="agy-hd"><div class="agy-hd-l"><div class="agy-hd-logo">' + logoHdHtml() + '</div>' +
         '<div style="min-width:0"><div class="agy-hd-t">上下文总览<span class="agy-hd-ver">v' + VER + '</span></div></div></div>' +
         '<div class="agy-hd-r">' +
             '<button class="agy-gear" data-settings title="设置">' + icon('gear') + '</button>' +
@@ -1514,6 +1603,30 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     return head + kpis + body;
   }
 
+  /* 会话数据缓存：防止运行中因写入间隙返回 null 导致侧边栏闪烁切换到空卡片 */
+  const sessionDataCache = new Map();
+
+  /* 折叠标题栏：骨架固定，纯数据差量渲染 */
+  function sideSkeletonHtml(sess) {
+    const name = sess ? sessName(sess) : '会话统计';
+    return '<div class="agy-sd">' +
+      '<button type="button" class="agy-sd-bar' + (sideCollapsed ? '' : ' open') + '" data-sd-toggle>' +
+        '<span class="agy-sd-caret">▸</span>' +
+        '<span class="agy-sd-bar-t"><span class="agy-sd-bar-name" data-notr>' + esc(name) + '</span> · 上下文</span>' +
+      '</button>' +
+      '<div class="agy-sd-body' + (sideCollapsed ? ' collapsed' : '') + '">' +
+        '<div class="agy-sd-content" data-sd-content>' + sideBodyHtml(sess) + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function applySideCollapsed(host) {
+    const bar = host.querySelector('.agy-sd-bar');
+    const body = host.querySelector('.agy-sd-body');
+    if (bar) bar.classList.toggle('open', !sideCollapsed);
+    if (body) body.classList.toggle('collapsed', sideCollapsed);
+  }
+
   function mountSideCard() {
     const panelBody = document.querySelector('[data-side-panel-body]');
     if (!panelBody) return false;
@@ -1522,7 +1635,14 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     const sid = currentConvId();
     if (!sid) return false;
 
-    const sess = sessionById(sid);
+    let sess = sessionById(sid);
+    if (sess) {
+      sessionDataCache.set(sid, sess);
+    } else {
+      // 运行中若偶发读空，使用上一份有效数据，坚决不闪烁
+      sess = sessionDataCache.get(sid) || null;
+    }
+
     // 只用该会话自身的数字做版本号：其它会话变化 / 生成时间变化不会触发侧边卡片重绘
     const rev = VER + '|' + sid + '|' + (sess ? [
       (sess.tokens && sess.tokens.total) || 0, (sess.tokens && sess.tokens.requests) || 0, sess.steps || 0,
@@ -1531,9 +1651,21 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
 
     const host = document.getElementById(SIDE_ID);
     if (host && host.isConnected && newTab.contains(host)) {
+      const innerTarget = newTab.querySelector('.w-full.max-w-xl');
+      if (innerTarget && host.parentElement !== innerTarget) {
+        innerTarget.insertAdjacentElement('afterbegin', host);
+      }
       if (host.dataset.rev === rev) return true;
-      if (host.querySelector('.hot')) return true; // 正在悬停，不打断
-      host.querySelector('.agy-sd').innerHTML = sideBodyHtml(sess);
+      if (host.querySelector('.hot')) return true; // 正在悬停交互，不打断
+
+      // 仅差量更新内部数据与标题，外层折叠按钮与容器骨架绝不推倒重建
+      const nameEl = host.querySelector('.agy-sd-bar-name');
+      if (nameEl) nameEl.textContent = sess ? sessName(sess) : '会话统计';
+
+      const contentEl = host.querySelector('[data-sd-content]');
+      if (contentEl) {
+        contentEl.innerHTML = sideBodyHtml(sess);
+      }
       host.dataset.rev = rev;
       return true;
     }
@@ -1543,39 +1675,28 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     el.id = SIDE_ID;
     el.className = 'agy-scope';
     el.dataset.rev = rev;
-    el.innerHTML = '<div class="agy-sd">' + sideBodyHtml(sess) + '</div>';
+    el.innerHTML = sideSkeletonHtml(sess);
     if (window.__agyI18n && window.__agyI18n.watch) window.__agyI18n.watch(el);
     el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-sd-toggle]')) {
+        e.preventDefault();
+        sideCollapsed = !sideCollapsed;
+        writeSetting(SIDE_COLLAPSE_KEY, sideCollapsed ? '1' : '0');
+        applySideCollapsed(el);
+        return;
+      }
       if (e.target.closest('[data-sd-open]')) { e.preventDefault(); open(); }
     });
 
-    const inner = newTab.querySelector('.w-full.max-w-xl') || newTab.firstElementChild;
-    let scrollHost = null;
+    const inner = newTab.querySelector('.w-full.max-w-xl');
     if (inner) {
-      scrollHost = Array.prototype.find.call(inner.querySelectorAll('div'), (d) => {
-        const cs = getComputedStyle(d);
-        return (cs.overflowY === 'auto' || cs.overflowY === 'scroll') && cs.display !== 'none';
-      });
-    }
-    if (scrollHost) {
-      scrollHost.insertBefore(el, scrollHost.firstChild);
-    } else if (inner) {
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;';
-      wrap.appendChild(el);
-      inner.style.display = 'flex';
-      inner.style.flexDirection = 'column';
-      inner.style.minHeight = '0';
-      inner.insertBefore(wrap, inner.firstChild);
+      inner.insertAdjacentElement('afterbegin', el);
     } else {
-      newTab.insertBefore(el, newTab.firstChild);
+      newTab.insertAdjacentElement('afterbegin', el);
     }
     return true;
   }
 
-  /* ==========================================================================
-     侧边栏菜单项
-     ========================================================================== */
   function mountMenuItem() {
     if (document.getElementById(ITEM_ID)) return true;
     const nav = document.querySelector('[data-testid="sidebar-navigation-items"]');
@@ -1591,8 +1712,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
       'flex-grow w-full justify-start font-normal min-w-0 gap-1.5 px-2 rounded-lg py-1.5 bg-transparent text-secondary-foreground hover:bg-sidebar-muted';
     item.type = 'button';
     item.title = '上下文总览';
-    item.innerHTML = '<span class="agy-mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
-      IC.chart + '</svg></span><span>上下文总览</span>';
+    item.innerHTML = '<span class="agy-mi">' + logoMiHtml() + '</span><span>上下文总览</span>';
     item.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); open(); });
     if (anchor && anchor.parentElement === nav) anchor.insertAdjacentElement('afterend', item);
     else nav.appendChild(item);

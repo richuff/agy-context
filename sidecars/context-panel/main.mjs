@@ -12,7 +12,7 @@
  * 客户端脚本在 ./panel.js（+ i18n.js），通过占位符注入统计数据；只在代码或数据变化时推送。
  */
 
-import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import http from "node:http";
 import { homedir } from "node:os";
@@ -222,25 +222,77 @@ function setStats(d, fp) {
   return true;
 }
 
+/* ---------------- 持久化设置 ---------------- */
+
+const SETTINGS_FILE = path.join(PLUGIN_ROOT, "settings.json");
+
+function readSettingsFile() {
+  try {
+    if (existsSync(SETTINGS_FILE)) {
+      return JSON.parse(readFileSync(SETTINGS_FILE, "utf8")) || {};
+    }
+  } catch { /* ignore */ }
+  const isZh = (Intl.DateTimeFormat().resolvedOptions().locale || "").toLowerCase().startsWith("zh");
+  return { "agy-context:lang": isZh ? "zh" : "en" };
+}
+
+function writeSettingsFile(patch) {
+  if (!patch || typeof patch !== "object") return;
+  try {
+    const cur = readSettingsFile();
+    const updated = Object.assign(cur, patch);
+    writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), "utf8");
+    return updated;
+  } catch (e) {
+    LOG("failed to write settings:", e?.message || e);
+  }
+}
+
 /* ---------------- 注入脚本构建 ---------------- */
 
-let buildCache = { key: "", hash: "", src: "" };
+function readLogoDataUrl() {
+  const exts = [
+    { ext: "jpg", mime: "image/jpeg" },
+    { ext: "jpeg", mime: "image/jpeg" },
+    { ext: "png", mime: "image/png" },
+    { ext: "svg", mime: "image/svg+xml" },
+    { ext: "webp", mime: "image/webp" },
+  ];
+  for (const item of exts) {
+    const p = path.join(PLUGIN_ROOT, "assets", "logo." + item.ext);
+    try {
+      if (existsSync(p)) {
+        return "data:" + item.mime + ";base64," + readFileSync(p).toString("base64");
+      }
+    } catch { /* ignore */ }
+  }
+  return "";
+}
+
+let buildCache = { key: "", hash: "", panel: "", i18n: "", logo: "", settings: {} };
 function readBuild() {
   const panel = readFileSync(PANEL_SCRIPT, "utf8");
   let i18n = "";
   try { i18n = readFileSync(I18N_SCRIPT, "utf8").replace(/<\/script/gi, "<\\/script"); } catch { /* ignore */ }
-  const key = panel.length + ":" + i18n.length + ":" + panel.slice(0, 64);
-  const hash = createHash("sha1").update(panel).update("\0").update(i18n).digest("hex").slice(0, 12);
-  if (hash !== buildCache.hash) buildCache = { key, hash, panel, i18n };
+  const logo = readLogoDataUrl();
+  const settings = readSettingsFile();
+  const settingsStr = JSON.stringify(settings);
+  const key = panel.length + ":" + i18n.length + ":" + logo.length + ":" + settingsStr.length + ":" + panel.slice(0, 64);
+  const hash = createHash("sha1").update(panel).update("\0").update(i18n).update("\0").update(logo).update("\0").update(settingsStr).digest("hex").slice(0, 12);
+  if (hash !== buildCache.hash) buildCache = { key, hash, panel, i18n, logo, settings };
   return buildCache;
 }
 
 function buildInjectionScript(b, payloadJson) {
-  // 用函数替换，避免 payload 里的 $& 等被当成替换模式
-  const panel = b.panel.replace(/__PAYLOAD__/g, () => payloadJson);
+  // 用函数替换，避免 payload / logo 里的 $& 等被当成替换模式
+  const panel = b.panel
+    .replace(/__PAYLOAD__/g, () => payloadJson)
+    .replace(/__LOGO__/g, () => b.logo || "");
+  const settingsJson = JSON.stringify(b.settings || {});
   return (
     "(function(){try{window.__agyI18nDispose&&window.__agyI18nDispose();}catch(e){}" +
     "try{window.__agyCtxDispose&&window.__agyCtxDispose();}catch(e){}})();\n" +
+    "window.__agySettings=Object.assign({}," + settingsJson + ",window.__agySettings||{});\n" +
     "var __agyR=" + panel + ";\n;\n" + b.i18n + "\n;window.__agyCtxBuild=" + JSON.stringify(b.hash) + ";__agyR;"
   );
 }
@@ -281,10 +333,15 @@ async function sync(cdp, sessionId) {
   const changed = await refreshStats();
   if (!stats.data) return;
   const b = readBuild();
-  // 页面里当前的构建版本 + 数据版本（极小的探针，不触发任何渲染）
+  // 页面里当前的构建版本 + 数据版本 + 前端待持久化设置
   const probe = await evalIn(cdp, sessionId,
-    "JSON.stringify([window.__agyCtxBuild||'', window.__agyCtxDataHash||''])");
-  const [pageBuild, pageHash] = JSON.parse(probe || '["",""]');
+    "JSON.stringify([window.__agyCtxBuild||'', window.__agyCtxDataHash||'', window.__agyPendingSettings||null])");
+  const [pageBuild, pageHash, pendingSettings] = JSON.parse(probe || '["","",null]');
+
+  if (pendingSettings && typeof pendingSettings === "object") {
+    writeSettingsFile(pendingSettings);
+    await evalIn(cdp, sessionId, "window.__agyPendingSettings = null;");
+  }
 
   if (pageBuild !== b.hash) {
     const v = await evalIn(cdp, sessionId, buildInjectionScript(b, stats.json));
