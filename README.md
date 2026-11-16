@@ -138,7 +138,7 @@ agy plugin install https://github.com/richuff/agy-context
 提交入口：[Antigravity Marketplace partner intake form](https://forms.gle/2EX5RFYPoJe1UgxR9)
 
 > `agy plugin validate --strict` 会对根目录 `AGENTS.md` 报一条警告（"plugins load rules only from rules/"）。
-> 这是官方所述的**多工具仓库预期行为**——`AGENTS.md` 是给贡献者看的协作纪律指针，
+> 这是官方所述的**多工具仓库预期行为**——`AGENTS.md` 是给贡献者看的常驻硬约束，
 > 故意不放入 `rules/` 以免注入到最终用户会话。按官方 CI 过滤方案排除该文件后，
 > 发布阻塞项为 0。
 

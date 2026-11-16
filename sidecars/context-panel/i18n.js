@@ -6,13 +6,13 @@
  *
  * 默认英文；语言选择存 localStorage(agy-context:lang)。
  * 切换语言时：英文=翻译，中文=恢复原文（WeakMap 保存）。
- * 只在插件自身的 root / side / item 三个容器内翻译，绝不动 Antigravity 宿主界面。
+ * 只在插件自身的 root / side / item / tip 四个容器内翻译，绝不动 Antigravity 宿主界面。
+ * tip（浮动提示）挂在 body 下、hover 时才写入内容，必须一并纳入观察范围。
  */
 (() => {
   if (window.__agyI18nReady) {
     window.__agyI18n.apply();
-    window.__agyI18n.injectControls();
-    return;
+    return 'i18n-ready';
   }
 
   /* ---------------- 中→英 词典（长词优先，运行时按长度降序） ---------------- */
@@ -176,7 +176,6 @@
     "记录内容被截断（truncated_fields）的事件，代表上下文被压缩。": "Records where content was truncated (truncated_fields), indicating context compaction.",
     "悬停环形图或图例查看各项；Token 吞吐 = 输入 + 输出（不含缓存读取）。": "Hover donut or legend to inspect segments. Throughput = input + output (cache excluded).",
     "按 transcript 时间戳分类：工具执行 / 模型生成 / 等待用户输入 / 系统开销。": "Classified from transcript timestamps: tool exec / model gen / awaiting input / system overhead.",
-    "排行中点击程序可筛选 · 路径已脱敏": "Click a program to filter · paths redacted",
     "数据来自 transcript 的 tool_calls 与 GENERIC 记录。路径已脱敏。": "From transcript tool_calls and GENERIC records. Paths redacted.",
     "最后一次请求的输入": "Input of last request",
     "分项按字符占比估算": "Segments estimated by char share",
@@ -226,18 +225,69 @@
     "输出": "Output",
     "轮": " rounds",
     "步": " steps",
+
+    /* ---- 补漏：hover 提示 / 搜索栏 / 图表内残留 ----
+     * 这些文本由 panel.js 拼接生成，或长句与字典旧条目不一致（如「吞吐」vs「消耗」），
+     * 导致整条长句匹配失败、只留下孤立中文词。按「确切长句优先 + 独立词兜底」补齐。
+     * ---------------------------------------------------------------- */
+    // 悬停说明长句（实际源码用「Token 消耗」，旧条目误写为「Token 吞吐」）
+    "悬停环形图或图例查看各项；Token 消耗 = 输入 + 输出（不含缓存读取）。": "Hover donut or legend to inspect segments. Throughput = input + output (cache excluded).",
+    "悬停环形图或图例查看各项": "Hover donut or legend to inspect segments",
+    "不含缓存读取": "cache excluded",
+    "（不含缓存读取）": " (cache excluded)",
+    // 费用（图表图例 / tooltip / footer 里单独出现）
+    "费用（按公开单价估算）": "Cost (from public pricing)",
+    "费用为估算值": "Cost estimated",
+    "费用": "Cost",
+    // 命令明细 footer
+    "点击行展开命令与输出": "Click a row to expand command & output",
+    // 星期（' 周' + WD[r] 拼出 周二/周三…，先于单字兜底匹配）
+    "周一": "Mon", "周二": "Tue", "周三": "Wed", "周四": "Thu",
+    "周五": "Fri", "周六": "Sat", "周日": "Sun",
+    // 热力图 / 柱状图 tooltip 里的独立词
+    "活跃 天": " active days",
+    "最长连续": "Longest streak",
+    "活跃天数": "Active days",
+    "活跃": "Active",          // 落单兜底（长词「活跃时段/活跃度/活跃时长」已优先匹配）
+    "个 · 费用": " · Cost",
+    " 个 · 费用 ": " · Cost ",
+    "记录": " records",
+    // 搜索框 placeholder（整句精确匹配，避免误伤用户数据里的同名词）
+    "搜索标题 / 工作区 / 会话 ID / 模型…": "Search title / workspace / session ID / model…",
+    // 关闭按钮 title
+    "关闭 (Esc)": "Close (Esc)",
+    // 卡片 / 图例零散词
+    "显示更多（还有": "Show more (",
+    "显示前 100": "top 100",
+    "模型生成": "model gen",
+    "合计 Token": "Total tokens",
+    "路径已脱敏": "Paths redacted",
+    // 全角标点（无汉字、CN 不抓，但视觉仍是中文符号）
+    "（显示前 100）": "(top 100)",
+    "（还有": " (",
+    "）": ")",
+    "（": " (",
+    "；": "; ",
+    "，": ", ",
+    "暂未找到该会话的统计数据": "No stats yet for this session",
+    "新会话需等待几秒刷新": "new sessions take a few seconds",
+    // 侧边卡片 / 页脚 / 长句拆解后的独立词
+    "上下文": "Context",           // 落单兜底（长词「当前上下文/上下文总览」已优先匹配）
+    "不含": "excl.",
+    "无 token": "No token",
   };
 
-  var PAIRS = Object.keys(M)
-    .sort(function (a, b) { return b.length - a.length; })
-    .map(function (k) { return [k, M[k]]; });
-
+  /* 单次正则替换：长词优先（按长度降序拼进交替分支），一次扫描完成，比逐词 split/join 快一个数量级 */
+  var KEYS = Object.keys(M).sort(function (a, b) { return b.length - a.length; });
+  var RE = new RegExp(KEYS.map(function (k) { return k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|'), 'g');
+  var cache = new Map();
   function trText(s) {
-    for (var i = 0; i < PAIRS.length; i++) {
-      var a = PAIRS[i][0];
-      if (s.indexOf(a) >= 0) s = s.split(a).join(PAIRS[i][1]);
-    }
-    return s;
+    var hit = cache.get(s);
+    if (hit !== undefined) return hit;
+    var out = s.replace(RE, function (m) { return M[m]; });
+    if (cache.size > 4000) cache.clear();
+    cache.set(s, out);
+    return out;
   }
 
   /* ---------------- 状态 ---------------- */
@@ -255,10 +305,15 @@
   var showSide = readLS(SIDE_KEY, '1') !== '0';
   var showMenu = readLS(MENU_KEY, '1') !== '0';
 
-  var ROOTS = ['__agy_ctx_root_v3__', '__agy_ctx_side_v3__', '__agy_ctx_item_v3__'];
+  // 浮动提示容器挂在 document.body 下、不属于上面三个根节点；
+  // hover 时 panel.js 用 tip.innerHTML 写入中文（来自 data-tip），必须一并纳入
+  // 观察与翻译范围，否则 tooltip 里会残留中文。
+  var ROOTS = ['__agy_ctx_root_v3__', '__agy_ctx_side_v3__', '__agy_ctx_item_v3__', '__agy_ctx_tip_v3__'];
   var savedText = new WeakMap();   // textNode -> original string
   var savedAttr = new WeakMap();   // element -> {attr: original}
-  var ATTRS = ['data-tip', 'title', 'placeholder'];
+  var ATTRS = ['data-tip', 'title', 'placeholder', 'data-n', 'data-v', 'data-def'];
+  // 用户内容（会话标题、命令、路径、工作区名等）不翻译，避免“编程会话”被改成“编程Conversations”
+  var SKIP = '[data-notr],.agy-mono,.agy-sc-t,.agy-sd-ht,.agy-fa-nm,.agy-fa-dir,.agy-hd-s,code,pre,input,textarea';
   var CN = /[\u4e00-\u9fa5]/;
 
   function eachRoot(fn) {
@@ -280,24 +335,57 @@
   }
 
   /* ---------------- 翻译 / 还原 ---------------- */
+  function skipped(el) { return !!(el && el.closest && el.closest(SKIP)); }
+  // 热力图轴标签：左侧 7 行是 WD 的单字（一…日），顶部是「11月」。
+  // 单字若进全局字典会误伤用户数据（如会话标题里的「日」），故按容器定向处理。
+  var WD_MAP = { '一': 'Mon', '二': 'Tue', '三': 'Wed', '四': 'Thu', '五': 'Fri', '六': 'Sat', '日': 'Sun' };
+  function axisText(n) {
+    var p = n.parentElement;
+    if (!p) return null;
+    if (p.classList && p.classList.contains('agy-hw')) {
+      var k = n.nodeValue.trim();
+      return WD_MAP[k] || null;                 // 单字星期 → Mon…Sun
+    }
+    if (p.classList && p.classList.contains('agy-hm')) {
+      return n.nodeValue.replace(/月/g, '');   // 「11月」→「11」
+    }
+    return null;
+  }
   function translateNode(n) {
     var v = n.nodeValue;
     if (!v || !CN.test(v)) return;
+    if (skipped(n.parentElement)) return;
+    var ax = axisText(n);
+    if (ax !== null) {
+      if (!savedText.has(n)) savedText.set(n, v);
+      if (ax !== v) n.nodeValue = ax;
+      return;
+    }
     if (!savedText.has(n)) savedText.set(n, v);
     var t = trText(v);
     if (t !== v) n.nodeValue = t;
   }
   function translateElAttrs(el) {
+    if (!el.getAttribute) return;
+    var sk = null;
     for (var i = 0; i < ATTRS.length; i++) {
       var a = ATTRS[i];
       var v = el.getAttribute(a);
       if (!v || !CN.test(v)) continue;
+      if (sk === null) sk = skipped(el);
+      if (sk && a === 'title') continue;
       var rec = savedAttr.get(el);
       if (!rec) { rec = {}; savedAttr.set(el, rec); }
       if (!(a in rec)) rec[a] = v;
       var t = trText(v);
       if (t !== v) el.setAttribute(a, t);
     }
+  }
+  function translateTree(r) {
+    if (r.nodeType === 3) { translateNode(r); return; }
+    if (r.nodeType !== 1) return;
+    walkText(r, translateNode);
+    walkEl(r, translateElAttrs);
   }
   function translateAll() {
     eachRoot(function (r) {
@@ -427,11 +515,8 @@
   }
 
   /* ---------------- 应用 ---------------- */
-  function apply() {
-    if (lang === 'en') translateAll();
-    else restoreAll();
-    applyZoom();
-    applyVisibility();
+  function apply() { window.__agyI18n.apply(); }
+  function syncSeg() {
     // 同步语言按钮高亮
     var seg = document.querySelector('.agy-set-i18n [data-i="lang"]');
     if (seg) seg.querySelectorAll('button').forEach(function (b) {
@@ -439,42 +524,62 @@
     });
   }
 
-  /* ---------------- 同步翻译：消除 5 秒刷新时的中→英闪烁 ----------------
-   * 根因：panel.js 每 5 秒用中文重建 DOM；MutationObserver 原本把翻译包在
-   * 80ms 的 setTimeout（宏任务，在浏览器"绘制之后"才执行）里，于是每轮都
-   * 「先把中文画出来，80ms 后再切成英文」，肉眼可见地一闪。
-   *
-   * 修复：MutationObserver 的回调本身就是微任务，按 HTML 规范在浏览器绘制
-   * 之前执行。直接在回调里"同步"翻译，译文会在同一帧绘制前落地，不经过
-   * 任何"中文可见"的中间态，因此不闪。
-   *
-   * 守卫：translating 防止翻译自身触发的 DOM 变动造成重入；翻译完成后页面
-   * 已无中文，后续回调里的 translateAll 是空操作，循环自然终止。
-   * injectControls 自带存在性判断，不会重复追加，同样会收敛。
+  /* ---------------- 同步翻译（只观察插件自己的容器） ----------------
+   * 旧实现在 document.body 上开 subtree 观察，Antigravity 聊天流每次 DOM 变化
+   * 都会触发对插件全部节点的完整遍历，是卡顿主因之一。
+   * 现在：只观察插件自己的 3 个根节点，且只翻译变动记录里新增/改动的节点。
+   * MutationObserver 回调是微任务，在绘制前执行，所以不会闪出中文。
+   * 自身改动产生的记录用 takeRecords() 丢弃，避免循环。
    * ------------------------------------------------------------------ */
-  var translating = false;
-  function applyNow() {
-    if (translating) return;
-    translating = true;
-    try {
-      if (lang === 'en') translateAll();
-      injectControls();
-    } finally {
-      translating = false;
+  var watched = new WeakSet();
+  var mo = new MutationObserver(function (records) {
+    if (lang !== 'en') { injectControls(); return; }
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      if (r.type === 'childList') {
+        for (var j = 0; j < r.addedNodes.length; j++) translateTree(r.addedNodes[j]);
+      } else if (r.type === 'characterData') {
+        translateNode(r.target);
+      } else if (r.type === 'attributes') {
+        translateElAttrs(r.target);
+      }
     }
+    injectControls();
+    mo.takeRecords();
+  });
+  function watch(el) {
+    if (!el || watched.has(el)) return;
+    watched.add(el);
+    mo.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
+    if (lang === 'en') { translateTree(el); mo.takeRecords(); }
   }
-
-  var mo = new MutationObserver(function () { applyNow(); });
-  mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+  function watchRoots() { eachRoot(watch); }
+  function applyNow() {
+    watchRoots();
+    if (lang === 'en') translateAll(); else restoreAll();
+    injectControls();
+    mo.takeRecords();
+  }
 
   /* ---------------- 初始化 ---------------- */
   injectStyle();
   window.__agyI18n = {
-    apply: function () { applyNow(); },
+    apply: function () { applyNow(); applyZoom(); applyVisibility(); syncSeg(); },
     injectControls: injectControls,
-    translateAll: translateAll
+    translateAll: translateAll,
+    watch: watch,
+    t: function (s) { return lang === 'en' ? trText(String(s)) : String(s); },
+    lang: function () { return lang; }
   };
   window.__agyI18nReady = true;
-  // 延迟一点，等 panel.js 把 DOM mount 完（此后由 MutationObserver 同步接管）
-  setTimeout(applyNow, 80);
-})();
+  window.__agyI18nDispose = function () {
+    mo.disconnect();
+    var st = document.getElementById('__agy_i18n_style__');
+    if (st) st.remove();
+    delete window.__agyI18n;
+    delete window.__agyI18nReady;
+    delete window.__agyI18nDispose;
+  };
+  window.__agyI18n.apply();
+  return 'i18n ' + lang;
+})()

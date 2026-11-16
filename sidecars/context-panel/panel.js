@@ -40,7 +40,6 @@
   let DATA = __PAYLOAD__;
   let RANGE = 'all';
   let EXEC_FILTER = 'all';
-  let PROG_FILTER = '';
   let HEAT_METRIC = 'tokens';
   let SQ = '';
   let SWS = '';
@@ -333,8 +332,6 @@
 .agy-rk-r{position:relative;display:flex;align-items:center;gap:8px;padding:6px 8px 8px;border-radius:7px;font-size:11.5px;
   cursor:default;transition:background .12s}
 .agy-rk-r:hover{background:var(--c-hover)}
-.agy-rk-r.click{cursor:pointer}
-.agy-rk-r.sel{background:rgba(59,130,246,.10)}
 .agy-rk-d{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
 .agy-rk-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--c-fg2)}
 .agy-rk-v{color:var(--c-mut);font-variant-numeric:tabular-nums;font-size:11px}
@@ -703,17 +700,14 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     return { stack: '<div class="agy-stk">' + segs + '</div>', legend };
   }
 
-  function rankList(entries, opts) {
-    opts = opts || {};
+  function rankList(entries) {
     if (!entries.length) return '<div class="agy-empty">暂无数据</div>';
     const max = entries[0][1] || 1;
     const total = entries.reduce((a, b) => a + b[1], 0);
     return '<div class="agy-rk agy-scroll">' + entries.map((e, i) => {
       const color = col(i);
-      const sel = opts.sel && opts.sel === e[0];
-      return '<div class="agy-rk-r' + (opts.click ? ' click' : '') + (sel ? ' sel' : '') + '"' +
-        (opts.click ? ' data-' + opts.click + '="' + esc(e[0]) + '"' : '') +
-        ' data-tip="' + esc('[' + color + '] ' + e[0] + '\n×' + e[1] + ' · 占比 ' + pctStr(e[1], total) + '%' + (opts.click ? '\n点击筛选命令记录' : '')) + '">' +
+      return '<div class="agy-rk-r" ' +
+        ' data-tip="' + esc('[' + color + '] ' + e[0] + '\n×' + e[1] + ' · 占比 ' + pctStr(e[1], total) + '%') + '">' +
         '<span class="agy-rk-d" style="background:' + color + '"></span>' +
         '<span class="agy-rk-n agy-mono">' + esc(e[0]) + '</span>' +
         '<span class="agy-rk-v">×' + fn(e[1]) + '</span>' +
@@ -966,7 +960,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     const total = f.progs.reduce((a, b) => a + b[1], 0);
     return '<div class="agy-card s3">' +
       cardHead('term', '命令执行', f.progs.length + ' 个程序 · ' + fn(total) + ' 次执行') +
-      rankList(f.progs, { click: 'prog', sel: PROG_FILTER }) + '</div>';
+      rankList(f.progs) + '</div>';
   }
 
   function cardModels(f) {
@@ -1220,7 +1214,6 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
   function cardExec(f) {
     const base = f.execRecords;
     let list = base.slice();
-    if (PROG_FILTER) list = list.filter((r) => (r.prog || '工具') === PROG_FILTER);
     const failed = list.filter((r) => r.failed).length;
     const slow = list.filter((r) => (r.durSec || 0) >= 10).length;
     const bg = list.filter((r) => r.bg).length;
@@ -1263,7 +1256,6 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
 
     return '<div class="agy-card s12" data-execcard>' +
       cardHead('term', '命令执行明细',
-        (PROG_FILTER ? '<button class="agy-chip on" data-progclear>' + esc(PROG_FILTER) + ' ✕</button>' : '') +
         '<div class="agy-seg sm">' + [['all', '全部 ' + all], ['failed', '失败 ' + failed], ['slow', '慢 ' + slow], ['bg', '后台 ' + bg]].map((x) =>
           '<button data-ef="' + x[0] + '" class="' + (EXEC_FILTER === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>') +
       '<div class="agy-csum">' +
@@ -1278,7 +1270,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
         (failProg ? '<div class="agy-cn-r"><span class="agy-cn-k bad">失败最多</span><span class="agy-cn-v">' + esc(failProg[0]) +
           '</span><span class="agy-cn-n bad">×' + failProg[1] + '</span></div>' : '') + '</div>' : '') +
       '<div class="agy-cmd-list agy-scroll">' + (rows || '<div class="agy-empty">没有匹配的命令</div>') + '</div>' +
-      '<div class="agy-ft">' + list.length + ' 条' + (list.length > 100 ? '（显示前 100）' : '') + ' · 点击行展开命令与输出 · 在上方「命令执行」排行中点击程序可筛选 · 路径已脱敏</div>' +
+      '<div class="agy-ft">' + list.length + ' 条' + (list.length > 100 ? '（显示前 100）' : '') + ' · 点击行展开命令与输出 · 路径已脱敏</div>' +
     '</div>';
   }
 
@@ -1357,21 +1349,6 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     if ((el = t.closest('[data-sws]'))) { SWS = el.getAttribute('data-sws'); SLIMIT = 24; return renderSessions(); }
     if ((el = t.closest('[data-smore]'))) { SLIMIT += 24; return renderSessions(); }
     if ((el = t.closest('[data-open]'))) return openSession(el.getAttribute('data-open'), el);
-    if ((el = t.closest('[data-prog]'))) {
-      const p = el.getAttribute('data-prog');
-      PROG_FILTER = PROG_FILTER === p ? '' : p;
-      EXEC_FILTER = 'all';
-      bodyEl.querySelectorAll('[data-prog]').forEach((n) => n.classList.toggle('sel', n.getAttribute('data-prog') === PROG_FILTER));
-      rerenderExec();
-      const ec = bodyEl.querySelector('[data-execcard]');
-      if (ec && PROG_FILTER) ec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
-    if ((el = t.closest('[data-progclear]'))) {
-      PROG_FILTER = '';
-      bodyEl.querySelectorAll('[data-prog]').forEach((n) => n.classList.remove('sel'));
-      return rerenderExec();
-    }
     if ((el = t.closest('[data-ef]'))) { EXEC_FILTER = el.getAttribute('data-ef'); return rerenderExec(); }
     if ((el = t.closest('[data-cmd]'))) {
       const k = el.getAttribute('data-cmd');
