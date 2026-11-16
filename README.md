@@ -80,15 +80,22 @@ Antigravity 会话统计插件 — 在侧边面板实时显示当前会话的 To
 
 ## 安装
 
+**从 GitHub 直接安装**（无需上架 Marketplace，`agy` 会克隆仓库）：
+
 ```bash
-agy plugin install https://github.com/<you>/agy-context
+agy plugin install https://github.com/richuff/agy-context
 ```
 
-或本地目录：
+在 CLI 交互界面里也可以用 `/plugin install https://github.com/richuff/agy-context`。
+
+本地目录或本地仓库：
 
 ```bash
 agy plugin install ./agy-context
 ```
+
+> 安装后可在 Antigravity App 的 **Customizations → Installed**，或 `agy plugin list` 中查看。
+> 更新版本：`agy plugin uninstall agy-context` 后重新安装；或直接重跑安装命令。
 
 安装后需在 `~/.gemini/config/config.json` 启用 sidecar：
 
@@ -101,6 +108,46 @@ agy plugin install ./agy-context
 ```
 
 重启 Antigravity 生效。
+
+---
+
+## 发布
+
+### 方式一：GitHub 直装（已可用，无需审核）
+
+官方 `agy plugin install` 支持直接传 GitHub 仓库 URL。只要仓库是 public、根目录有合法的
+`plugin.json`，任何人执行下面命令即可安装：
+
+```bash
+agy plugin install https://github.com/richuff/agy-context
+```
+
+### 方式二：上架 Antigravity Marketplace（需 Google 审核）
+
+上架后用户可通过 `agy plugin install agy-context` 或在 App 的 **Marketplace** 标签里搜索安装。
+
+前置条件（本项目已满足）：
+
+| 检查 | 状态 |
+|---|---|
+| `agy plugin validate` 零 error | ✅ |
+| `plugin.json` 含 `name` / `displayName` / `description` / `version` / `logo` / `suggestedPrompts` / `author` | ✅ |
+| `README.md` + 内置 1:1 logo | ✅ |
+| 组件路径符合规范（skills/、sidecars/ 等） | ✅ |
+
+提交入口：[Antigravity Marketplace partner intake form](https://forms.gle/2EX5RFYPoJe1UgxR9)
+
+> `agy plugin validate --strict` 会对根目录 `AGENTS.md` 报一条警告（"plugins load rules only from rules/"）。
+> 这是官方所述的**多工具仓库预期行为**——`AGENTS.md` 是给贡献者看的协作纪律指针，
+> 故意不放入 `rules/` 以免注入到最终用户会话。按官方 CI 过滤方案排除该文件后，
+> 发布阻塞项为 0。
+
+### 发版流程
+
+1. 改 `plugin.json` 的 `version`（SemVer）
+2. 跑 `agy plugin validate .` 与 `node test/test-stats.mjs`
+3. `git commit` + `git tag v3.0.1` + `git push --tags`
+4. 用户卸载重装即可拿到新版本
 
 ---
 

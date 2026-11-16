@@ -25,7 +25,8 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
 
@@ -35,7 +36,7 @@ const APP_DIRS = [
   join(homedir(), ".gemini", "antigravity-ide"),
 ];
 
-function findAppDir(explicit) {
+export function findAppDir(explicit) {
   if (explicit) return existsSync(explicit) ? explicit : null;
   for (const d of APP_DIRS) {
     if (existsSync(join(d, "conversation_summaries.db"))) return d;
@@ -634,7 +635,7 @@ function redactFiles(filesObj, opts = {}) {
   return Object.fromEntries(Object.entries(out).sort((a, b) => b[1] - a[1]));
 }
 
-async function collectAll(appDir, opts = {}) {
+export async function collectAll(appDir, opts = {}) {
   const summariesDb = join(appDir, "conversation_summaries.db");
   const convDir = join(appDir, "conversations");
   const brainDir = join(appDir, "brain");
@@ -1224,7 +1225,13 @@ async function main() {
   else console.log(renderOverview(data));
 }
 
-main().catch((e) => {
-  console.error("统计失败:", e?.message || e); console.error(e?.stack || "");
-  process.exitCode = 1;
-});
+// 仅在作为命令行入口时执行 main()；被 sidecar import 时只导出函数（避免每次刷新都 spawn 子进程）
+const IS_MAIN = (() => {
+  try { return !!process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; }
+})();
+if (IS_MAIN) {
+  main().catch((e) => {
+    console.error("统计失败:", e?.message || e); console.error(e?.stack || "");
+    process.exitCode = 1;
+  });
+}

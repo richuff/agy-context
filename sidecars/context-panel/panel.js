@@ -1144,7 +1144,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     const chips = [['', '全部', list.length]].concat(sortEntries(wsCount).map(([k, v]) => [k, k, v]));
     if (ungrouped) chips.push(['__none__', '未分组', ungrouped]);
     host.querySelector('[data-schips]').innerHTML = chips.map((c) =>
-      '<button class="agy-chip' + (SWS === c[0] ? ' on' : '') + '" data-sws="' + esc(c[0]) + '">' + esc(c[1]) + ' <em>' + c[2] + '</em></button>').join('');
+      '<button class="agy-chip' + (SWS === c[0] ? ' on' : '') + '" data-sws="' + esc(c[0]) + '">' + (c[0] && c[0] !== '__none__' ? '<span data-notr>' + esc(c[1]) + '</span>' : esc(c[1])) + ' <em>' + c[2] + '</em></button>').join('');
 
     if (SWS) {
       list = list.filter((s) => {
@@ -1524,7 +1524,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     const sec = (t) => '<div class="agy-sd-sec">' + esc(t) + '</div>';
 
     const body =
-      sec('当前会话 · ' + sessName(sess)) +
+      '<div class="agy-sd-sec">当前会话 · <span data-notr>' + esc(sessName(sess)) + '</span></div>' +
       cardContext(sess) +
       cardContextEvents(sess) +
       cardFileActivity(sess) +
@@ -1546,8 +1546,11 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     if (!sid) return false;
 
     const sess = sessionById(sid);
-    const rev = VER + '|' + String((DATA && DATA.generatedAt) || '') + '|' + sid + '|' +
-      (sess ? ((sess.tokens && sess.tokens.total) || 0) : 0) + '|' + (sess ? sess.steps : 0);
+    // 只用该会话自身的数字做版本号：其它会话变化 / 生成时间变化不会触发侧边卡片重绘
+    const rev = VER + '|' + sid + '|' + (sess ? [
+      (sess.tokens && sess.tokens.total) || 0, (sess.tokens && sess.tokens.requests) || 0, sess.steps || 0,
+      sess.toolTotal || 0, Math.round(sess.activeSeconds || 0), (sess.context && sess.context.used) || 0, sess.title || '',
+    ].join(',') : 'none');
 
     const host = document.getElementById(SIDE_ID);
     if (host && host.isConnected && newTab.contains(host)) {
@@ -1564,6 +1567,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     el.className = 'agy-scope';
     el.dataset.rev = rev;
     el.innerHTML = '<div class="agy-sd">' + sideBodyHtml(sess) + '</div>';
+    if (window.__agyI18n && window.__agyI18n.watch) window.__agyI18n.watch(el);
     el.addEventListener('click', (e) => {
       if (e.target.closest('[data-sd-open]')) { e.preventDefault(); open(); }
     });
@@ -1622,28 +1626,21 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
      数据更新 / 生命周期
      ========================================================================== */
   window.__agyCtxVer = VER;
+  window.__agyCtxDataHash = (DATA && DATA.dataHash) || '';
   window.__agyCtxUpdate = function (d) {
+    if (!d) return;
+    const same = d.dataHash && DATA && d.dataHash === DATA.dataHash;
     DATA = d;
-    // 浮层打开且用户没在悬停/输入时才整页重绘，避免打断交互
-    if (mask.classList.contains('on')) {
+    window.__agyCtxDataHash = d.dataHash || '';
+    if (same) return;
+    // 浮层打开、开启了自动刷新、且用户没在悬停/输入时才重绘，避免打断交互
+    if (mask.classList.contains('on') && PREFS.autoRefresh !== false) {
       const busy = bodyEl.querySelector('.hot') || (document.activeElement && bodyEl.contains(document.activeElement) && document.activeElement.matches('input,select'));
       if (!busy) render();
     }
     mountSideCard();
   };
   window.__agyCtxOpen = open;
-  window.__agyCtxDiag = function () {
-    try {
-      const pb = document.querySelector('[data-side-panel-body]');
-      const nt = pb && pb.querySelector('[data-testid="side-panel-new-tab-view"]');
-      const h = document.getElementById(SIDE_ID);
-      const tids = pb ? Array.prototype.slice.call(pb.querySelectorAll('[data-testid]'), 0, 12).map((n) => n.getAttribute('data-testid')).join(',') : '';
-      return JSON.stringify({ path: location.pathname, pb: !!pb, nt: !!nt, sess: !!sessionById(currentConvId()),
-        host: !!h, conn: h ? h.isConnected : null, inNt: h && nt ? nt.contains(h) : null, hh: h ? h.offsetHeight : null,
-        hp: h && h.parentElement ? (h.parentElement.className || h.parentElement.tagName).slice(0, 80) : null, tids: tids });
-    } catch (e) { return 'diag-err ' + e.message; }
-  };
-
   const timers = [];
   let tries = 0;
   timers.push(setInterval(() => { tries++; if (mountMenuItem() || tries > 40) clearInterval(timers[0]); }, 400));

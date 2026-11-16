@@ -9,15 +9,15 @@
  *   4. 执行 panel.js（读文件注入，避免模板字符串嵌套）
  *   5. 长连接保活，页面重载后自动重注入
  *
- * 客户端脚本在 ./panel.js，通过 __PAYLOAD__ 占位符注入统计数据。
+ * 客户端脚本在 ./panel.js（+ i18n.js），通过占位符注入统计数据；只在代码或数据变化时推送。
  */
 
-import { spawn } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import http from "node:http";
 import { homedir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -156,48 +156,93 @@ class Cdp {
 }
 
 /* ---------------- 统计数据 ---------------- */
+/*
+ * 性能要点（避免 5 秒一次的卡顿 / Windows 鼠标转圈）：
+ *   1. stats.mjs 以模块方式在本进程内调用，不再每轮 spawn 子进程
+ *      （Windows 上频繁 CreateProcess 会让鼠标出现“后台忙”转圈）。
+ *   2. 先算一个数据文件指纹（mtime + size），没变化就不重算、不推送。
+ *   3. 推送前比较内容哈希，相同则跳过；页面侧也只在数据真的变化时重绘。
+ */
 
-let cache = { at: 0, data: null };
+let statsMod = null;
+async function getStatsMod() {
+  if (!statsMod) statsMod = await import(pathToFileURL(STATS_SCRIPT).href);
+  return statsMod;
+}
 
-function loadStats(force = false) {
-  if (!force && cache.data && Date.now() - cache.at < 30000) {
-    return Promise.resolve(cache.data);
+let appDirCache = null;
+function dataFingerprint(appDir) {
+  const h = createHash("sha1");
+  const add = (f) => {
+    try { const st = statSync(f); h.update(f + ":" + st.mtimeMs + ":" + st.size + "\n"); } catch { /* ignore */ }
+  };
+  add(path.join(appDir, "conversation_summaries.db"));
+  add(path.join(appDir, "conversation_summaries.db-wal"));
+  const conv = path.join(appDir, "conversations");
+  try { for (const f of readdirSync(conv)) add(path.join(conv, f)); } catch { /* ignore */ }
+  const brain = path.join(appDir, "brain");
+  try {
+    for (const id of readdirSync(brain)) {
+      add(path.join(brain, id, ".system_generated", "logs", "transcript.jsonl"));
+    }
+  } catch { /* ignore */ }
+  return h.digest("hex");
+}
+
+const STATS_MIN_INTERVAL = 8000;   // 数据持续变化时，最快 8 秒重算一次
+let stats = { data: null, json: "", hash: "", fp: "", at: 0 };
+
+async function refreshStats() {
+  try {
+    const mod = await getStatsMod();
+    if (!appDirCache || !existsSync(appDirCache)) appDirCache = mod.findAppDir();
+    if (!appDirCache) {
+      const err = { error: "找不到 Antigravity 数据目录" };
+      return setStats(err, "none");
+    }
+    const fp = dataFingerprint(appDirCache);
+    if (stats.data && fp === stats.fp) return false;
+    if (stats.data && Date.now() - stats.at < STATS_MIN_INTERVAL) return false;
+    const d = await mod.collectAll(appDirCache, {});
+    return setStats(d, fp);
+  } catch (e) {
+    if (stats.data && !stats.data.error) return false; // 偶发读取失败（数据库正被写入）时保留上一份
+    return setStats({ error: "统计失败: " + (e?.message || e) }, "err");
   }
-  return new Promise((resolve) => {
-    if (!existsSync(STATS_SCRIPT)) return resolve({ error: "stats.mjs 不存在" });
-    const p = spawn(process.execPath, [STATS_SCRIPT, "--json"], { timeout: 60000, windowsHide: true });
-    let out = "";
-    let err = "";
-    p.stdout.on("data", (c) => (out += c));
-    p.stderr.on("data", (c) => (err += c));
-    p.on("close", () => {
-      try {
-        const d = JSON.parse(out);
-        cache = { at: Date.now(), data: d };
-        resolve(d);
-      } catch {
-        resolve({ error: "解析统计失败", detail: (err || out).slice(0, 400) });
-      }
-    });
-    p.on("error", (e) => resolve({ error: "启动 stats.mjs 失败: " + e.message }));
-  });
+}
+
+function setStats(d, fp) {
+  const json = JSON.stringify(d, (k, v) => (k === "generatedAt" ? undefined : v));
+  const hash = createHash("sha1").update(json).digest("hex").slice(0, 16);
+  stats.fp = fp;
+  stats.at = Date.now();
+  if (hash === stats.hash) return false;
+  d.dataHash = hash;
+  stats = { data: d, json: JSON.stringify(d).replace(/</g, "\\u003c"), hash, fp, at: stats.at };
+  return true;
 }
 
 /* ---------------- 注入脚本构建 ---------------- */
 
-function buildInjectionScript(statsJson) {
-  const payload = JSON.stringify(statsJson).replace(/</g, "\\u003c");
-  const raw = readFileSync(PANEL_SCRIPT, "utf8");
+let buildCache = { key: "", hash: "", src: "" };
+function readBuild() {
+  const panel = readFileSync(PANEL_SCRIPT, "utf8");
+  let i18n = "";
+  try { i18n = readFileSync(I18N_SCRIPT, "utf8").replace(/<\/script/gi, "<\\/script"); } catch { /* ignore */ }
+  const key = panel.length + ":" + i18n.length + ":" + panel.slice(0, 64);
+  const hash = createHash("sha1").update(panel).update("\0").update(i18n).digest("hex").slice(0, 12);
+  if (hash !== buildCache.hash) buildCache = { key, hash, panel, i18n };
+  return buildCache;
+}
+
+function buildInjectionScript(b, payloadJson) {
   // 用函数替换，避免 payload 里的 $& 等被当成替换模式
-  let script = raw.replace(/__PAYLOAD__/g, () => payload);
-  // 追加独立的 i18n 层（DOM 后处理翻译，不改动 panel.js 源码）
-  try {
-    const i18n = readFileSync(I18N_SCRIPT, "utf8").replace(/<\/script/gi, "<\\/script");
-    script += "\n;\n" + i18n;
-  } catch (e) {
-    console.warn("[agy-context] i18n.js 读取失败:", e.message);
-  }
-  return script;
+  const panel = b.panel.replace(/__PAYLOAD__/g, () => payloadJson);
+  return (
+    "(function(){try{window.__agyI18nDispose&&window.__agyI18nDispose();}catch(e){}" +
+    "try{window.__agyCtxDispose&&window.__agyCtxDispose();}catch(e){}})();\n" +
+    "var __agyR=" + panel + ";\n;\n" + b.i18n + "\n;window.__agyCtxBuild=" + JSON.stringify(b.hash) + ";__agyR;"
+  );
 }
 
 /* ---------------- 主循环 ---------------- */
@@ -225,20 +270,32 @@ async function findPage(cdp, port) {
   );
 }
 
-async function injectTo(cdp, sessionId) {
-  const stats = await loadStats();
-  const expr = buildInjectionScript(stats);
-  const r = await cdp.send(
-    "Runtime.evaluate",
-    { expression: expr, returnByValue: true, awaitPromise: false },
-    sessionId
-  );
-  if (r?.exceptionDetails) {
-    LOG("injection error:", JSON.stringify(r.exceptionDetails).slice(0, 500));
-    return false;
+async function evalIn(cdp, sessionId, expression) {
+  const r = await cdp.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: false }, sessionId);
+  if (r?.exceptionDetails) throw new Error("eval: " + JSON.stringify(r.exceptionDetails).slice(0, 400));
+  return r?.result?.value;
+}
+
+let pushedHash = "";
+async function sync(cdp, sessionId) {
+  const changed = await refreshStats();
+  if (!stats.data) return;
+  const b = readBuild();
+  // 页面里当前的构建版本 + 数据版本（极小的探针，不触发任何渲染）
+  const probe = await evalIn(cdp, sessionId,
+    "JSON.stringify([window.__agyCtxBuild||'', window.__agyCtxDataHash||''])");
+  const [pageBuild, pageHash] = JSON.parse(probe || '["",""]');
+
+  if (pageBuild !== b.hash) {
+    const v = await evalIn(cdp, sessionId, buildInjectionScript(b, stats.json));
+    LOG("inject:", v, "build", b.hash);
+    pushedHash = stats.hash;
+    return;
   }
-  LOG("inject:", r?.result?.value);
-  return true;
+  if (pageHash !== stats.hash || (changed && pushedHash !== stats.hash)) {
+    await evalIn(cdp, sessionId, "window.__agyCtxUpdate && window.__agyCtxUpdate(" + stats.json + ")");
+    pushedHash = stats.hash;
+  }
 }
 
 async function tick() {
@@ -270,19 +327,7 @@ async function tick() {
       LOG("attached:", page.title || page.url);
     }
 
-    await injectTo(currentCdp, pageSession.id);
-
-    // 面板已开时推送最新数据
-    const fresh = await loadStats(true);
-    const pushExpr =
-      "window.__agyCtxUpdate && window.__agyCtxUpdate(" +
-      JSON.stringify(fresh).replace(/</g, "\\u003c") +
-      ")";
-    await currentCdp.send(
-      "Runtime.evaluate",
-      { expression: pushExpr, returnByValue: true },
-      pageSession.id
-    );
+    await sync(currentCdp, pageSession.id);
   } catch (e) {
     LOG("cycle error:", e?.message || e);
     consecutiveFailures++;
@@ -290,7 +335,7 @@ async function tick() {
     currentCdp = null;
     pageSession = null;
   }
-  // 成功一轮后清零失败计数，恢复正常 5 秒节奏
+  // 成功一轮后清零失败计数，恢复正常节奏（每轮只发一个极小探针，数据/代码变了才推送）
   const delay = consecutiveFailures > 0
     ? Math.min(5000 + consecutiveFailures * 2000, 20000)
     : 5000;
