@@ -1,0 +1,13 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "agy-context",
+  "displayName": "会话统计 (agy-context)",
+  "version": "3.0.0",
+  "description": "统计 Antigravity 历史会话：步数、工具调用、涉及文件、使用模型。提供侧边栏浮动面板（CDP 注入）+ Skill 命令两种入口。",
+  "license": "MIT",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "统计一下我最近的会话使用情况",
+    "我改了哪些文件？最多用的是什么工具？"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Context Panel",
+  "description": "在 Antigravity 侧边栏注入会话统计面板"
+}

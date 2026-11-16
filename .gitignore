@@ -1,0 +1,26 @@
+# 参考副本与备份（纪律 §6.5：只读，不提交）
+_ref/
+_webui_backup/
+
+# UI 演进截图（保留本地，不入库；README 引用改为外链再放开）
+docs/*.png
+docs/*.jpg
+
+# 调试草稿（纪律 §7.5：不混入工作树）
+test/_*.js
+test/_*.mjs
+
+# 本地生成的数据 / 日志 / 缓存
+*.log
+*.tmp
+*.db
+*.db-journal
+node_modules/
+.gemini/
+.DS_Store
+Thumbs.db
+
+# 环境变量 / 凭据
+.env
+.env.*
+*.token
