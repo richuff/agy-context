@@ -15,7 +15,7 @@
  * 当前会话通过 URL `/c/<conversationId>` 识别。数据由 main.mjs 通过占位符注入（注释里勿写占位符本身）。
  */
 (() => {
-  const VER = '3.0.14';
+  const VER = '3.0.16';
   const ROOT_ID = '__agy_ctx_root_v3__';
   const ITEM_ID = '__agy_ctx_item_v3__';
   const SIDE_ID = '__agy_ctx_side_v3__';
@@ -488,6 +488,19 @@
 .agy-fa-b.r{background:rgba(59,130,246,.10);color:#2563eb}
 .agy-fa-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:11.5px;transition:background .1s}
 .agy-fa-row:hover{background:var(--c-hover)}
+.agy-fa-item{min-width:0}
+.agy-fa-item>summary{list-style:none;cursor:pointer}
+.agy-fa-item>summary::-webkit-details-marker{display:none}
+.agy-fa-toggle{flex:0 0 10px;color:var(--c-dim);transition:transform .12s}
+.agy-fa-item[open] .agy-fa-toggle{transform:rotate(90deg)}
+.agy-fa-detail{margin:0 4px 7px 48px;padding:6px 8px;border:1px solid var(--c-line);border-radius:6px;background:var(--c-soft);max-height:300px;overflow-y:auto;overflow-x:hidden}
+.agy-fa-op{padding:3px 0 6px}
+.agy-fa-op+.agy-fa-op{border-top:1px solid var(--c-line);padding-top:7px}
+.agy-fa-op-h{display:flex;gap:8px;margin-bottom:4px;color:var(--c-dim);font-size:9.5px}
+.agy-fa-diff{margin:0;font:10px/1.5 var(--font-mono,monospace);white-space:pre-wrap;overflow-wrap:anywhere}
+.agy-fa-del{display:block;color:#b42318;background:rgba(239,68,68,.08)}
+.agy-fa-add{display:block;color:#087443;background:rgba(16,185,129,.09)}
+.agy-fa-missing{color:var(--c-dim);font-size:10px}
 .agy-fa-lang{flex:0 0 32px;height:19px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:9.5px;font-weight:700}
 .agy-fa-path{flex:1;display:flex;align-items:baseline;gap:6px;min-width:0}
 .agy-fa-dir{color:var(--c-dim);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%}
@@ -603,6 +616,12 @@
 #${SIDE_ID} .agy-card-x{font-size:9px}
 #${SIDE_ID} .agy-kgrid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))!important;gap:7px!important;width:100%!important;box-sizing:border-box!important}
 #${SIDE_ID} .agy-list{max-height:200px;width:100%!important;box-sizing:border-box!important;overflow-x:hidden!important}
+#${SIDE_ID} .agy-list.agy-scroll[data-ce-list]{max-height:260px!important;overflow-y:auto!important;overflow-x:hidden!important}
+#${SIDE_ID} .agy-ce-detail{width:auto!important;max-width:100%!important;min-width:0!important;max-height:none!important;box-sizing:border-box!important;overflow:visible!important;overflow-wrap:anywhere!important}
+#${SIDE_ID} .agy-fa-list.agy-scroll{display:flex!important;flex-direction:column!important;max-height:300px!important;overflow-y:auto!important;overflow-x:hidden!important}
+#${SIDE_ID} .agy-fa-detail{max-height:300px!important;overflow-y:auto!important;overflow-x:hidden!important}
+#${SIDE_ID} .agy-cmd-list.agy-scroll{max-height:320px!important;overflow-y:auto!important;overflow-x:hidden!important}
+#${SIDE_ID} .agy-cmd-command{max-height:none!important;overflow:visible!important}
 #${SIDE_ID} .agy-csum{grid-template-columns:1fr 1fr;gap:6px;width:100%!important;box-sizing:border-box!important}
 #${SIDE_ID} .agy-heat{grid-template-columns:auto repeat(auto-fill,minmax(0,1fr))!important;width:100%!important;box-sizing:border-box!important}
 #${SIDE_ID} .agy-sec{font-size:10.5px;margin:12px 0 7px}
@@ -1130,21 +1149,21 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
 
   function cardContextEvents(sess) {
     const list = (sess && sess.contextEvents) || [];
-    const names = { SYSTEM_MESSAGE: '系统消息', GENERIC: '工具输出', PLANNER_RESPONSE: '模型响应', USER_INPUT: '用户输入', ERROR_MESSAGE: '错误消息', CHECKPOINT: '检查点', TRUNCATED: '上下文截断' };
-    const colors = { SYSTEM_MESSAGE: '#8b5cf6', GENERIC: '#06b6d4', PLANNER_RESPONSE: '#3b82f6', USER_INPUT: '#10b981', ERROR_MESSAGE: '#ef4444', CHECKPOINT: '#94a3b8' };
+    const names = { SYSTEM_MESSAGE: '系统消息', GENERIC: '工具输出', TOOL_CALL_INPUT: '工具输入', PLANNER_RESPONSE: '模型响应', USER_INPUT: '用户输入', ERROR_MESSAGE: '错误消息', CHECKPOINT: '检查点', TRUNCATED: '上下文截断' };
+    const colors = { SYSTEM_MESSAGE: '#8b5cf6', GENERIC: '#06b6d4', TOOL_CALL_INPUT: '#f59e0b', PLANNER_RESPONSE: '#3b82f6', USER_INPUT: '#10b981', ERROR_MESSAGE: '#ef4444', CHECKPOINT: '#94a3b8' };
     const count = (type) => list.filter((e) => type === 'other' ? !names[e.type] : e.type === type).length;
-    const options = [['all', '全部事件'], ['GENERIC', '工具输出'], ['PLANNER_RESPONSE', '模型响应'], ['SYSTEM_MESSAGE', '系统消息'], ['USER_INPUT', '用户输入'], ['ERROR_MESSAGE', '错误消息'], ['CHECKPOINT', '检查点'], ['other', '其他类型']];
+    const options = [['all', '全部事件'], ['TOOL_CALL_INPUT', '工具输入'], ['GENERIC', '工具输出'], ['PLANNER_RESPONSE', '模型响应'], ['SYSTEM_MESSAGE', '系统消息'], ['USER_INPUT', '用户输入'], ['ERROR_MESSAGE', '错误消息'], ['CHECKPOINT', '检查点'], ['other', '其他类型']];
     const query = CTX_EVENT_QUERY.trim().toLocaleLowerCase();
     const matches = list.map((e, i) => ({ ...e, _key: 'ce' + i })).filter((e) => {
       if (CTX_EVENT_TYPE !== 'all' && (CTX_EVENT_TYPE === 'other' ? names[e.type] : e.type !== CTX_EVENT_TYPE)) return false;
       if (!query) return true;
-      return [e.type, e.status, e.text, ...(e.fields || [])].join(' ').toLocaleLowerCase().includes(query);
+      return [e.type, e.tool, e.status, e.text, ...(e.fields || [])].join(' ').toLocaleLowerCase().includes(query);
     });
     const shown = matches.slice(-100).reverse();
     const rows = shown.map((e) => {
       const color = colors[e.type] || '#94a3b8';
       const text = String(e.text || (e.fields || []).join(', ') || e.status || '').trim();
-      const preview = text.replace(/\s+/g, ' ').slice(0, 180) || '（无文本内容）';
+      const preview = (e.tool ? e.tool + ' · ' : '') + (text.replace(/\s+/g, ' ').slice(0, 180) || '（无文本内容）');
       const open = CTX_EVENT_EXPANDED === e._key;
       const key = '<button type="button" class="agy-ev-row agy-ce-row" data-ce-row="' + e._key + '" aria-expanded="' + open + '">' +
         '<span style="color:' + color + '">●</span>' +
@@ -1152,14 +1171,15 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
         '<span class="agy-ev-d agy-mono">' + esc(preview) + '</span>' +
         '<span class="agy-ev-w">step ' + (e.step == null ? '-' : e.step) + '</span>' +
         '<span class="agy-ev-w">' + esc(localEventTime(e.at)) + '</span></button>';
-      return key + (open ? '<pre class="agy-ce-detail agy-mono">' + esc(text || '（无文本内容）') + '</pre>' : '');
+      return key + (open ? '<pre class="agy-ce-detail agy-mono">' + esc(text || '（无文本内容）') + '</pre>' +
+        (e.truncated ? '<div class="agy-fa-missing">内容过长，已截取前 6000 字符</div>' : '') : '');
     }).join('');
     const shownText = matches.length > 100 ? '（显示最新 100 条）' : '';
     return '<div class="agy-card s6" data-context-event-card>' +
       cardHead('cut', '上下文事件', (sess && sess.contextEventCount != null ? sess.contextEventCount : list.length) + ' 条') +
       '<div class="agy-ce-controls"><select data-ce-type aria-label="事件类型筛选">' + options.map(([v, label]) =>
         '<option value="' + v + '"' + (CTX_EVENT_TYPE === v ? ' selected' : '') + '>' + label + (v === 'all' ? ' ' + list.length : v === 'other' ? ' ' + count(v) : v !== 'all' ? ' ' + count(v) : '') + '</option>').join('') +
-        '</select><input type="search" data-ce-query value="' + esc(CTX_EVENT_QUERY) + '" placeholder="搜索工具输出、模型响应、系统消息…" aria-label="搜索上下文事件"></div>' +
+        '</select><input type="search" data-ce-query value="' + esc(CTX_EVENT_QUERY) + '" placeholder="搜索工具输入输出、模型响应、系统消息…" aria-label="搜索上下文事件"></div>' +
       (list.length ? '<div class="agy-list agy-scroll" data-ce-list>' + (rows || '<div class="agy-empty">没有匹配的上下文事件</div>') + '</div>' +
         '<div class="agy-ft">匹配 ' + matches.length + ' 条' + shownText + ' · 点击事件可查看完整内容</div>' :
         '<div class="agy-empty">本次会话没有可查询的 transcript 事件</div>') +
@@ -1195,19 +1215,39 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     const rows = es.slice(0, 30).map(([p, v]) => {
       const segs = String(p).split(/[\\/]/);
       const lang = langOf(p);
-      return '<div class="agy-fa-row" data-tip="' + esc(p + '\n写 ' + v.write + ' · 改 ' + v.edit + ' · 读 ' + v.read + (v.chars ? '\n' + v.chars + ' 字符' : '')) + '">' +
+      const changes = ((sess && sess.fileChanges) || []).filter((op) => op.path === p);
+      const changedLines = changes.map((op) => {
+        const diff = op.changes || {};
+        const removed = Array.isArray(diff.removed) ? diff.removed : [];
+        const added = Array.isArray(diff.added) ? diff.added : [];
+        const lineRows = removed.map((line) => '<span class="agy-fa-del">− ' + esc(line || ' ') + '</span>')
+          .concat(added.map((line) => '<span class="agy-fa-add">+ ' + esc(line || ' ') + '</span>')).join('\n');
+        const opName = op.op === 'write' ? '写入' : '修改';
+        const step = op.step == null ? '—' : op.step;
+        const lineLabel = op.lineStart ? ' · 第 ' + op.lineStart + ' 行起' : '';
+        const time = op.at ? new Date(op.at).toLocaleString() : '';
+        const omitted = (diff.removedTruncated || diff.addedTruncated) ? '<div class="agy-fa-missing">（变更内容过长，仅显示前 120 行）</div>' : '';
+        return '<div class="agy-fa-op"><div class="agy-fa-op-h"><span>' + opName + '</span><span>步骤 ' + step + lineLabel + '</span><span>' + esc(time) + '</span></div>' +
+          (lineRows ? '<pre class="agy-fa-diff">' + lineRows + '</pre>' : '<div class="agy-fa-missing">工具记录中没有修改前后的文本片段</div>') + omitted + '</div>';
+      });
+      const changeDetail = changedLines.length
+        ? changedLines.slice(-10).join('') + (changedLines.length > 10 ? '<div class="agy-fa-missing">仅显示最近 10 次修改</div>' : '')
+        : '<div class="agy-fa-missing">本次会话只记录了文件读取，没有可展示的增删行</div>';
+      return '<details class="agy-fa-item"><summary class="agy-fa-row" data-tip="' + esc(p + '\n写 ' + v.write + ' · 改 ' + v.edit + ' · 读 ' + v.read + (v.chars ? '\n' + v.chars + ' 字符' : '')) + '">' +
+        '<span class="agy-fa-toggle">›</span>' +
         '<span class="agy-fa-lang" style="background:' + lang[1] + '1f;color:' + lang[1] + '">' + esc(lang[0]) + '</span>' +
         '<span class="agy-fa-path"><span class="agy-fa-dir">' + esc(segs.slice(-2, -1)[0] || '') + '</span>' +
         '<span class="agy-fa-nm">' + esc(segs.pop() || p) + '</span></span>' +
         '<span class="agy-fa-bs">' + (v.write ? '<span class="agy-fa-b w">写 ' + v.write + '</span>' : '') +
           (v.edit ? '<span class="agy-fa-b e">改 ' + v.edit + '</span>' : '') +
           (v.read ? '<span class="agy-fa-b r">读 ' + v.read + '</span>' : '') + '</span>' +
-        '<span class="agy-fa-ch">' + (v.chars ? (v.chars >= 1000 ? (v.chars / 1000).toFixed(1) + 'k' : v.chars) : '') + '</span></div>';
+        '<span class="agy-fa-ch">' + (v.chars ? (v.chars >= 1000 ? (v.chars / 1000).toFixed(1) + 'k' : v.chars) : '') + '</span></summary>' +
+        '<div class="agy-fa-detail">' + changeDetail + '</div></details>';
     }).join('');
     return '<div class="agy-card s12">' +
       cardHead('file', '文件活动', es.length + ' 个文件 <span class="agy-fa-b w">写 ' + n('write') + '</span><span class="agy-fa-b e">改 ' +
         n('edit') + '</span><span class="agy-fa-b r">读 ' + n('read') + '</span>') +
-      '<div class="agy-list agy-scroll" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1px 16px;max-height:300px">' + rows + '</div></div>';
+      '<div class="agy-list agy-scroll agy-fa-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1px 16px;max-height:300px">' + rows + '</div></div>';
   }
 
   /* ---- 会话卡片网格 ---- */
@@ -1367,7 +1407,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
       '</div>';
       if (open) {
         h += '<div class="agy-cmd-detail"><div class="agy-cmd-dh"><span>命令 · ' + esc(r.session || '') + '</span><span>' + (r.lineCount || 0) + ' 行</span></div>' +
-          '<pre class="agy-cmd-pre agy-mono">' + esc(txt) + '</pre>' +
+          '<pre class="agy-cmd-pre agy-cmd-command agy-mono">' + esc(txt) + '</pre>' +
           (r.output ? '<div class="agy-cmd-dh"><span>结果</span><span>' + ddur(r.durSec) + (r.exitCode != null ? ' · 退出码 ' + r.exitCode : '') + '</span></div>' +
           '<pre class="agy-cmd-pre agy-mono">' + esc(String(r.output).slice(0, 1500)) + '</pre>' : '') + '</div>';
       }
@@ -1658,11 +1698,17 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     if (body) body.classList.toggle('collapsed', sideCollapsed);
   }
 
-  function rerenderSideContextEvents(host, focusSearch = false) {
+  function rerenderSideContextEvents(host, focusSearch = false, anchorKey = '') {
     const oldCard = host.querySelector('[data-context-event-card]');
     if (!oldCard) return;
     const sideBody = host.querySelector('.agy-sd-body');
     const sideScrollTop = sideBody ? sideBody.scrollTop : 0;
+    const oldList = oldCard.querySelector('[data-ce-list]');
+    const listScrollTop = oldList ? oldList.scrollTop : 0;
+    const anchorRow = anchorKey && oldList
+      ? Array.from(oldList.querySelectorAll('[data-ce-row]')).find((row) => row.getAttribute('data-ce-row') === anchorKey)
+      : null;
+    const anchorTop = anchorRow ? anchorRow.getBoundingClientRect().top : null;
     const input = oldCard.querySelector('[data-ce-query]');
     const selection = input ? input.selectionStart : null;
     const tmp = document.createElement('div');
@@ -1677,7 +1723,18 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
         if (selection != null) nextInput.setSelectionRange(selection, selection);
       }
     }
-    if (sideBody) requestAnimationFrame(() => { sideBody.scrollTop = sideScrollTop; });
+    requestAnimationFrame(() => {
+      if (sideBody) sideBody.scrollTop = sideScrollTop;
+      const nextList = nextCard.querySelector('[data-ce-list]');
+      if (nextList) nextList.scrollTop = listScrollTop;
+      if (anchorTop != null && nextList) {
+        const nextAnchor = Array.from(nextList.querySelectorAll('[data-ce-row]'))
+          .find((row) => row.getAttribute('data-ce-row') === anchorKey);
+        if (nextAnchor) {
+          nextList.scrollTop += nextAnchor.getBoundingClientRect().top - anchorTop;
+        }
+      }
+    });
   }
 
   function mountSideCard() {
@@ -1747,7 +1804,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
       if (eventRow) {
         const key = eventRow.getAttribute('data-ce-row');
         CTX_EVENT_EXPANDED = CTX_EVENT_EXPANDED === key ? '' : key;
-        rerenderSideContextEvents(el);
+        rerenderSideContextEvents(el, false, key);
         return;
       }
 

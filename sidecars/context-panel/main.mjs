@@ -329,7 +329,7 @@ async function evalIn(cdp, sessionId, expression) {
 }
 
 let pushedHash = "";
-let activeContextEvents = { id: "", fingerprint: "", events: [] };
+let activeContextEvents = { id: "", fingerprint: "", events: [], fileChanges: [] };
 
 async function pagePayload(cdp, sessionId) {
   const payload = JSON.parse(stats.json);
@@ -349,12 +349,18 @@ async function pagePayload(cdp, sessionId) {
       eventFingerprint = st.mtimeMs + ":" + st.size;
       if (activeContextEvents.id !== conversationId || activeContextEvents.fingerprint !== eventFingerprint) {
         const mod = await getStatsMod();
-        const parsed = mod.parseTranscript(transcript, { captureContextEvents: true });
-        activeContextEvents = { id: conversationId, fingerprint: eventFingerprint, events: parsed.contextEvents || [] };
+        const parsed = mod.parseTranscript(transcript, { captureContextEvents: true, captureFileChanges: true });
+        activeContextEvents = {
+          id: conversationId,
+          fingerprint: eventFingerprint,
+          events: parsed.contextEvents || [],
+          fileChanges: (parsed.fileOps || []).filter((op) => op.op === "write" || op.op === "edit"),
+        };
       }
       session.contextEvents = activeContextEvents.events;
       session.contextEventCount = activeContextEvents.events.length;
       session.contextEventsHash = eventFingerprint;
+      session.fileChanges = activeContextEvents.fileChanges;
     } catch { /* transcript may be temporarily unavailable while Antigravity writes it */ }
   }
 

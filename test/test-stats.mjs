@@ -159,19 +159,36 @@ if (mod) {
       { type: "USER_INPUT", step_index: 4, created_at: "2026-11-17T10:00:03Z", content: "User question" },
       { type: "ERROR_MESSAGE", step_index: 5, created_at: "2026-11-17T10:00:04Z", content: "An error occurred" },
       { type: "CHECKPOINT", step_index: 6, created_at: "2026-11-17T10:00:05Z", truncated_fields: ["content"] },
+      {
+        type: "PLANNER_RESPONSE", step_index: 7, created_at: "2026-11-17T10:00:06Z", content: "Applied a file edit",
+        tool_calls: [{ name: "edit_file", args: {
+          TargetFile: "D:\\workspace\\private\\src\\demo.js",
+          TargetContent: "const answer = 40;",
+          ReplacementContent: "const answer = 42;",
+        } }],
+      },
     ];
     try {
       writeFileSync(transcript, rows.map((row) => JSON.stringify(row)).join("\n"), "utf8");
       const summary = parseTranscript(transcript);
-      const captured = parseTranscript(transcript, { captureContextEvents: true });
+      const captured = parseTranscript(transcript, { captureContextEvents: true, captureFileChanges: true });
       const types = new Set(captured.contextEvents.map((event) => event.type));
       const toolOutput = captured.contextEvents.find((event) => event.type === "GENERIC");
+      const toolInput = captured.contextEvents.find((event) => event.type === "TOOL_CALL_INPUT");
+      const fileEdit = captured.fileOps.find((op) => op.op === "edit");
       if (summary.contextEventCount === rows.length && summary.contextEvents.length === 0
-          && captured.contextEvents.length === rows.length
-          && ["GENERIC", "PLANNER_RESPONSE", "SYSTEM_MESSAGE", "USER_INPUT"].every((type) => types.has(type))
-          && toolOutput && !/(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/.test(toolOutput.text))
-        ok("上下文事件捕获工具输出、模型响应、系统消息与用户输入");
-      else bad("上下文事件捕获类型", JSON.stringify({ count: summary.contextEventCount, captured: captured.contextEvents.length, types: [...types] }));
+          && captured.contextEvents.length === rows.length + 1
+          && ["GENERIC", "TOOL_CALL_INPUT", "PLANNER_RESPONSE", "SYSTEM_MESSAGE", "USER_INPUT"].every((type) => types.has(type))
+          && toolOutput && !/(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/.test(toolOutput.text)
+          && toolInput?.tool === "edit_file"
+          && toolInput.text.includes("const answer = 42;")
+          && !/(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/.test(toolInput.text)
+          && fileEdit?.changes?.removed?.[0] === "const answer = 40;"
+          && fileEdit?.changes?.added?.[0] === "const answer = 42;"
+          && !/(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/.test(fileEdit?.path || "")
+          && !summary.fileOps[0]?.changes)
+        ok("上下文事件捕获工具输入输出与文件增删行，并脱敏路径");
+      else bad("工具输入输出与文件修改行捕获", JSON.stringify({ count: summary.contextEventCount, captured: captured.contextEvents.length, types: [...types], toolInput, fileEdit }));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

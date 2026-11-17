@@ -193,8 +193,28 @@ export function parseTranscript(filePath, options = {}) {
           at: at || null,
           type: d.type,
           status: typeof d.status === "string" ? d.status : "",
-          text: redactContextText(eventText).slice(0, 1500),
+          text: redactContextText(eventText).slice(0, 6000),
+          truncated: eventText.length > 6000,
           fields: eventFields,
+        });
+      }
+    }
+    if (options.captureContextEvents && Array.isArray(d.tool_calls)) {
+      for (const tc of d.tool_calls) {
+        const tool = String(tc?.name || "tool");
+        let input = "";
+        try { input = JSON.stringify(tc?.args || {}); } catch { input = ""; }
+        if (!input) continue;
+        const safeInput = redactContextText(input);
+        out.contextEvents.push({
+          step: d.step_index ?? null,
+          at: at || null,
+          type: "TOOL_CALL_INPUT",
+          status: "",
+          tool,
+          text: safeInput.slice(0, 6000),
+          truncated: safeInput.length > 6000,
+          fields: [],
         });
       }
     }
@@ -246,17 +266,39 @@ export function parseTranscript(filePath, options = {}) {
         const opName = String(tc?.name || "");
         if (opName === "write_file" || opName === "edit_file" || opName === "read_file") {
           const args = tc?.args || {};
-          let p = String(args.Path || args.path || args.TargetFile || "");
+          let p = String(args.Path || args.path || args.TargetFile || args.file_path || "");
           p = p.replace(/^"|"$/g, "").replace(/\\/g, "\\");
           if (p) {
-            const content = String(args.Content || args.Replacement || args.Target || "");
-            out.fileOps.push({
+            const argText = (...keys) => {
+              for (const key of keys) if (typeof args[key] === "string") return args[key];
+              return "";
+            };
+            const beforeText = argText("TargetContent", "targetContent", "Target", "target", "old_string", "oldString", "OldString");
+            const afterText = opName === "write_file"
+              ? argText("Content", "content", "FileContent", "file_content")
+              : argText("ReplacementContent", "replacementContent", "Replacement", "replacement", "new_string", "newString", "NewString", "Content", "content");
+            const content = afterText || beforeText || argText("Content", "content", "Replacement", "Target");
+            const fileOp = {
               step: d.step_index ?? null,
               op: opName.replace("_file", ""),
               path: p,
               chars: content.length,
               at: at || null,
-            });
+            };
+            if (options.captureFileChanges && opName !== "read_file") {
+              const removed = opName === "write_file" ? { lines: [], truncated: false } : captureChangedLines(beforeText);
+              const added = captureChangedLines(afterText);
+              const lineStart = Number(args.StartLine ?? args.startLine ?? args.StartLineNumber ?? args.start_line);
+              fileOp.path = redactPath(p);
+              fileOp.changes = {
+                removed: removed.lines,
+                added: added.lines,
+                removedTruncated: removed.truncated,
+                addedTruncated: added.truncated,
+              };
+              if (Number.isInteger(lineStart) && lineStart > 0) fileOp.lineStart = lineStart;
+            }
+            out.fileOps.push(fileOp);
           }
           continue;
         }
@@ -527,6 +569,18 @@ function redactContextText(text) {
     const suffix = clean.split(/[\\/]+/).filter(Boolean).slice(-2).join("\\");
     return prefix + "…\\" + suffix + tail.slice(clean.length);
   });
+}
+
+function captureChangedLines(text) {
+  const clean = redactContextText(String(text || ""));
+  if (!clean) return { lines: [], truncated: false };
+  const truncatedByChars = clean.length > 12000;
+  const limited = truncatedByChars ? clean.slice(0, 12000) : clean;
+  const allLines = limited.split(/\r?\n/);
+  return {
+    lines: allLines.slice(0, 120),
+    truncated: truncatedByChars || allLines.length > 120,
+  };
 }
 
 function bytesToLatin1(val) {

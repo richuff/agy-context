@@ -19,8 +19,8 @@ Open the right panel (`Ctrl+Shift+B`); the top shows the current session's stats
 | **Session header** | Title, session ID, step count, last updated |
 | **KPI** | Token usage · Est. cost · Cache hit · Active time |
 | **Current Context** | Used / window size, percentage, colored stacked bar, 6-segment breakdown |
-| **Context Events** | Truncated-content (context compaction) records |
-| **File Activity** | Write / edit / read counts and character volume per file |
+| **Context Events** | Searchable tool inputs and outputs, model responses, system messages, user inputs and truncation records |
+| **File Activity** | Write / edit / read counts and character volume per file; expand a file to inspect recorded added and removed lines |
 | **Models** | Models used in this session and their call counts |
 | **File Types** | Grouped by extension |
 | **Hourly Activity** | 24-hour distribution |
@@ -163,7 +163,7 @@ Everything is read from local files under `~/.gemini/antigravity/`:
 | Commands & output | `tool_calls` `run_command` + `GENERIC` records |
 | File operations | `tool_calls` `write_file` / `edit_file` / `read_file` |
 | Context composition | Mapped to real tokens by each message type's character share |
-| Context events | transcript event types and text (`GENERIC`, `PLANNER_RESPONSE`, `SYSTEM_MESSAGE`, `USER_INPUT`, etc.) plus `truncated_fields` |
+| Context events | transcript event text plus tool call arguments (`tool_calls`) and `truncated_fields` |
 | Model names | `conversations/<id>.db` `gen_metadata` |
 
 ### How context usage is computed
