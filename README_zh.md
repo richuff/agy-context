@@ -12,18 +12,18 @@ Antigravity 会话统计插件 — 在侧边面板实时显示当前会话的 To
 
 ### 侧边面板（随会话实时更新）
 
-打开右侧面板（`Ctrl+Shift+B`），顶部即当前会话的统计。侧边卡片**默认折叠**，标题为「<会话名> · 上下文」，点击展开完整卡片。
+打开右侧面板（`Ctrl+Shift+B`），顶部即当前会话的统计。侧边卡片**默认展开**；内容超出可用高度时可在卡片内滚动，展开/折叠状态会被记住。
 
 | 区块 | 内容 |
 |---|---|
 | **会话头** | 标题、会话 ID、步数、更新时间 |
 | **KPI** | Token 消耗 · 预估费用 · 缓存命中 · 活跃时长 |
 | **当前上下文** | 已用量 / 窗口大小、占用百分比、彩色堆叠条、6 项构成明细 |
-| **上下文事件** | 内容被截断（上下文压缩）的记录 |
+| **上下文事件** | 搜索工具输出、模型响应、系统消息、用户输入等 transcript 记录，并按类型筛选 |
 | **文件活动** | 每个文件的写 / 改 / 读次数与字符量 |
 | **模型分布** | 本会话用到的模型及调用次数 |
 | **文件类型** | 按扩展名归类 |
-| **活跃时段** | 24 小时分布 |
+| **活跃时段** | 按系统本地时区归类的 24 小时分布 |
 | **命令执行** | 完整命令历史，可按失败 / 慢 / 后台筛选，点击行展开输出 |
 
 卡片布局与总览页完全一致，栅格自动塌成单列。
@@ -146,10 +146,11 @@ agy plugin install https://github.com/richuff/agy-context
 
 ### 发版流程
 
-1. 改 `plugin.json` 的 `version`（SemVer）
-2. 跑 `agy plugin validate .` 与 `node test/test-stats.mjs`
-3. `git commit` + `git tag v3.0.1` + `git push --tags`
-4. 用户卸载重装即可拿到新版本
+1. 修改 `plugin.json` 中的 `version`（SemVer），并在 `CHANGELOG.md` 补充版本说明。
+2. 运行 `agy plugin validate .` 和 `node test/test-stats.mjs`。
+3. 提交代码，创建 `v<version>` 标签，并推送分支和标签。
+4. 为该标签创建 GitHub Release，并附上插件文件 ZIP 包。
+5. 用户卸载重装即可拿到新版本。
 
 ---
 
@@ -165,7 +166,7 @@ agy plugin install https://github.com/richuff/agy-context
 | 命令与输出 | `tool_calls` 的 `run_command` + `GENERIC` 记录 |
 | 文件操作 | `tool_calls` 的 `write_file` / `edit_file` / `read_file` |
 | 上下文构成 | 按各类消息的字符占比映射到实际 token |
-| 上下文事件 | transcript 的 `truncated_fields` |
+| 上下文事件 | 当前会话 transcript 中带正文的事件类型与文本，以及 `truncated_fields` |
 | 模型名称 | `conversations/<id>.db` 的 `gen_metadata` |
 
 ### 上下文怎么算
@@ -187,6 +188,8 @@ agy plugin install https://github.com/richuff/agy-context
 | `USER_INPUT` | 等待输入 |
 
 间隔 > 5 分钟的视为空闲，不计入活跃时长。
+
+每日用量和活跃时段按当前电脑的系统本地时区归类。上下文事件可按类型筛选并搜索已记录的文本；展示前会脱敏路径，数据只在本机处理。transcript 未保存的内容无法还原。
 
 ---
 
@@ -254,7 +257,7 @@ sidecar 通过 CDP 连接 Antigravity：
 页面加载后：
 
 - 在侧边栏插入「上下文总览」菜单项
-- 在右侧面板注入当前会话卡片（默认折叠）
+- 在右侧面板注入当前会话卡片（默认展开，可在卡片内滚动）
 
 ### 为什么不用官方 Sidecar WebUI
 

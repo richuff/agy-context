@@ -329,9 +329,46 @@ async function evalIn(cdp, sessionId, expression) {
 }
 
 let pushedHash = "";
+let activeContextEvents = { id: "", fingerprint: "", events: [] };
+
+async function pagePayload(cdp, sessionId) {
+  const payload = JSON.parse(stats.json);
+  let conversationId = "";
+  try {
+    const pathname = await evalIn(cdp, sessionId, "location.pathname");
+    const match = /^\/c\/([A-Za-z0-9-]+)/.exec(String(pathname || ""));
+    if (match) conversationId = match[1];
+  } catch { /* 页面路由读取失败时只推送聚合统计 */ }
+
+  let eventFingerprint = "";
+  const session = (payload.sessions || []).find((s) => String(s.id) === conversationId);
+  if (conversationId && session && appDirCache) {
+    const transcript = path.join(appDirCache, "brain", conversationId, ".system_generated", "logs", "transcript.jsonl");
+    try {
+      const st = statSync(transcript);
+      eventFingerprint = st.mtimeMs + ":" + st.size;
+      if (activeContextEvents.id !== conversationId || activeContextEvents.fingerprint !== eventFingerprint) {
+        const mod = await getStatsMod();
+        const parsed = mod.parseTranscript(transcript, { captureContextEvents: true });
+        activeContextEvents = { id: conversationId, fingerprint: eventFingerprint, events: parsed.contextEvents || [] };
+      }
+      session.contextEvents = activeContextEvents.events;
+      session.contextEventCount = activeContextEvents.events.length;
+      session.contextEventsHash = eventFingerprint;
+    } catch { /* transcript may be temporarily unavailable while Antigravity writes it */ }
+  }
+
+  const hash = createHash("sha1")
+    .update(stats.hash).update("\0").update(conversationId).update("\0").update(eventFingerprint)
+    .digest("hex").slice(0, 16);
+  payload.dataHash = hash;
+  return { json: JSON.stringify(payload).replace(/</g, "\\u003c"), hash };
+}
+
 async function sync(cdp, sessionId) {
   const changed = await refreshStats();
   if (!stats.data) return;
+  const payload = await pagePayload(cdp, sessionId);
   const b = readBuild();
   // 页面里当前的构建版本 + 数据版本 + 前端待持久化设置
   const probe = await evalIn(cdp, sessionId,
@@ -344,14 +381,14 @@ async function sync(cdp, sessionId) {
   }
 
   if (pageBuild !== b.hash) {
-    const v = await evalIn(cdp, sessionId, buildInjectionScript(b, stats.json));
+    const v = await evalIn(cdp, sessionId, buildInjectionScript(b, payload.json));
     LOG("inject:", v, "build", b.hash);
-    pushedHash = stats.hash;
+    pushedHash = payload.hash;
     return;
   }
-  if (pageHash !== stats.hash || (changed && pushedHash !== stats.hash)) {
-    await evalIn(cdp, sessionId, "window.__agyCtxUpdate && window.__agyCtxUpdate(" + stats.json + ")");
-    pushedHash = stats.hash;
+  if (pageHash !== payload.hash || (changed && pushedHash !== payload.hash)) {
+    await evalIn(cdp, sessionId, "window.__agyCtxUpdate && window.__agyCtxUpdate(" + payload.json + ")");
+    pushedHash = payload.hash;
   }
 }
 

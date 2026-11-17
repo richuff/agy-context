@@ -17,6 +17,7 @@ test/_*.mjs
 *.db-journal
 settings.json
 node_modules/
+dist/
 .gemini/
 .DS_Store
 Thumbs.db

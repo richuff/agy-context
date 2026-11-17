@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -60,7 +60,7 @@ try {
 }
 
 if (mod) {
-  const { extractToolCalls, extractPaths, extractModels } = mod;
+  const { extractToolCalls, extractPaths, extractModels, parseTranscript, localDateHour } = mod;
 
   // extractToolCalls
   {
@@ -137,6 +137,44 @@ if (mod) {
     const models = extractModels(Buffer.from("nothing here", "latin1"));
     if (models.length === 0) ok("extractModels 无模型时返回空");
     else bad("extractModels 无模型时返回空", JSON.stringify(models));
+  }
+
+  {
+    const stamp = "2026-11-17T23:30:00Z";
+    const date = new Date(stamp);
+    const pad = (n) => String(n).padStart(2, "0");
+    const expected = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}`;
+    const actual = localDateHour(stamp);
+    if (actual && `${actual.day} ${actual.hour}` === expected) ok("活跃日期与小时使用系统本地时区");
+    else bad("活跃日期与小时使用系统本地时区", JSON.stringify(actual));
+  }
+
+  {
+    const dir = mkdtempSync(join(tmpdir(), "agy-context-events-"));
+    const transcript = join(dir, "transcript.jsonl");
+    const rows = [
+      { type: "GENERIC", step_index: 1, created_at: "2026-11-17T10:00:00Z", content: "Tool output at D:\\workspace\\private\\secret.txt: done" },
+      { type: "PLANNER_RESPONSE", step_index: 2, created_at: "2026-11-17T10:00:01Z", thinking: "Model thinking", content: "Model response" },
+      { type: "SYSTEM_MESSAGE", step_index: 3, created_at: "2026-11-17T10:00:02Z", content: "System notice" },
+      { type: "USER_INPUT", step_index: 4, created_at: "2026-11-17T10:00:03Z", content: "User question" },
+      { type: "ERROR_MESSAGE", step_index: 5, created_at: "2026-11-17T10:00:04Z", content: "An error occurred" },
+      { type: "CHECKPOINT", step_index: 6, created_at: "2026-11-17T10:00:05Z", truncated_fields: ["content"] },
+    ];
+    try {
+      writeFileSync(transcript, rows.map((row) => JSON.stringify(row)).join("\n"), "utf8");
+      const summary = parseTranscript(transcript);
+      const captured = parseTranscript(transcript, { captureContextEvents: true });
+      const types = new Set(captured.contextEvents.map((event) => event.type));
+      const toolOutput = captured.contextEvents.find((event) => event.type === "GENERIC");
+      if (summary.contextEventCount === rows.length && summary.contextEvents.length === 0
+          && captured.contextEvents.length === rows.length
+          && ["GENERIC", "PLANNER_RESPONSE", "SYSTEM_MESSAGE", "USER_INPUT"].every((type) => types.has(type))
+          && toolOutput && !/(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/.test(toolOutput.text))
+        ok("上下文事件捕获工具输出、模型响应、系统消息与用户输入");
+      else bad("上下文事件捕获类型", JSON.stringify({ count: summary.contextEventCount, captured: captured.contextEvents.length, types: [...types] }));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 }
 

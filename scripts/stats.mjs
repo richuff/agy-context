@@ -90,7 +90,7 @@ async function query(dbPath, sql) {
  * 读取一个会话的 transcript.jsonl，返回 { tokens, steps, tools, times }
  * 每行是一个 JSON 对象；只有 source=MODEL 的记录带 token。
  */
-export function parseTranscript(filePath) {
+export function parseTranscript(filePath, options = {}) {
   const out = {
     requests: 0,
     inputTokens: 0,
@@ -120,6 +120,8 @@ export function parseTranscript(filePath) {
     lastCacheTokens: 0,
     fileOps: [],        // [{step, op, path, chars, at}]
     truncations: [],    // [{step, fields, at}]
+    contextEvents: [],   // 当前会话查询用的 transcript 文本事件
+    contextEventCount: 0,
     types: {},          // PLANNER_RESPONSE / GENERIC / ...
     statuses: {},
     execRecords: [],    // 命令执行明细
@@ -172,6 +174,27 @@ export function parseTranscript(filePath) {
           at: ms,
           type: d.type,
           thinking: Boolean(d.thinking),
+        });
+      }
+    }
+
+    // 默认只统计事件数量；sidecar 仅为当前会话捕获正文，供本地搜索。
+    const hasEventContent = (typeof d.content === "string" && d.content.trim())
+      || (typeof d.thinking === "string" && d.thinking.trim());
+    const eventFields = Array.isArray(d.truncated_fields) ? d.truncated_fields.slice(0, 5) : [];
+    if (d.type && (hasEventContent || eventFields.length)) {
+      out.contextEventCount++;
+      if (options.captureContextEvents) {
+        const eventText = [d.content, d.thinking]
+          .filter((v) => typeof v === "string" && v.trim())
+          .join("\n\n");
+        out.contextEvents.push({
+          step: d.step_index ?? null,
+          at: at || null,
+          type: d.type,
+          status: typeof d.status === "string" ? d.status : "",
+          text: redactContextText(eventText).slice(0, 1500),
+          fields: eventFields,
         });
       }
     }
@@ -424,6 +447,16 @@ export function parseTranscript(filePath) {
   return out;
 }
 
+export function localDateHour(timestamp) {
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    day: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    hour: pad(date.getHours()),
+  };
+}
+
 /* ---------------- 定价（可调）---------------- */
 /**
  * 估算成本用的单价（USD / 1M tokens）。
@@ -486,6 +519,14 @@ function redactPath(text) {
   // 单独的两段盘符路径（d:\Mygit）保留目录名但去掉盘符
   s = s.replace(/\b[A-Za-z]:[\\/]([^\\/\s"';&|]+)/gi, (m, name) => "…\\" + name);
   return s;
+}
+
+function redactContextText(text) {
+  return redactPath(text).replace(/(^|[^A-Za-z0-9])([A-Za-z]):[\\/](?!\/)([^\s"'<>|]+)/g, (_match, prefix, _drive, tail) => {
+    const clean = tail.replace(/[),.;!?]+$/, "");
+    const suffix = clean.split(/[\\/]+/).filter(Boolean).slice(-2).join("\\");
+    return prefix + "…\\" + suffix + tail.slice(clean.length);
+  });
 }
 
 function bytesToLatin1(val) {
@@ -710,7 +751,7 @@ export async function collectAll(appDir, opts = {}) {
     commands: {},
     workspaces: {},
     daily: {},     // { 'YYYY-MM-DD': { tokens, cost, requests, steps } }
-    hourly: {},    // { 'HH': tokens } 活跃时段
+    hourly: {},    // { 'HH': tokens } 按系统本地小时归类
     pricing: PRICE,
   };
 
@@ -737,6 +778,7 @@ export async function collectAll(appDir, opts = {}) {
       status: s.status || "",
       toolCalls: {}, toolTotal: 0,
       models: {}, files: [], commands: {},
+      contextEventCount: 0,
       okSteps: 0, failedSteps: 0,
       tokens: { requests: 0, input: 0, cache: 0, output: 0, total: 0, costUSD: 0 },
       activeSeconds: 0, wallSeconds: 0,
@@ -755,6 +797,7 @@ export async function collectAll(appDir, opts = {}) {
     // ---- transcript（token 权威来源）----
     if (sess.hasTranscript) {
       const t = parseTranscript(trPath);
+      sess.contextEventCount = t.contextEventCount || 0;
       sess.tokens = {
         requests: t.requests,
         input: t.inputTokens,
@@ -788,9 +831,11 @@ export async function collectAll(appDir, opts = {}) {
       // 按天 / 按小时
       for (const ev of t.events) {
         if (!ev.at) continue;
-        const day = ev.at.slice(0, 10);
+        const localTime = localDateHour(ev.at);
+        if (!localTime) continue;
+        const day = localTime.day;
         sess.days[day] = (sess.days[day] || 0) + ev.in + ev.out;
-        const hour = ev.at.slice(11, 13);
+        const hour = localTime.hour;
         result.daily[day] = result.daily[day] || { tokens: 0, cost: 0, requests: 0, steps: 0 };
         const tok = ev.in + ev.out;
         result.daily[day].tokens += tok;
@@ -1060,7 +1105,7 @@ function renderOverview(d) {
 
   const hourly = Object.entries(d.hourly).sort((a, b) => a[0].localeCompare(b[0]));
   if (hourly.length) {
-    L.push("【活跃时段（UTC 小时）】");
+    L.push("【活跃时段（系统本地小时）】");
     const max = Math.max(...hourly.map((x) => x[1]));
     for (const [h, v] of hourly) {
       L.push("  " + h + ":00  " + fn(v).padStart(7) + "  " + bar(v, max, 16));

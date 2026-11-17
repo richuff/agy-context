@@ -12,7 +12,7 @@ All data comes **entirely from local files** — no network, no uploads.
 
 ### Side panel (live, per session)
 
-Open the right panel (`Ctrl+Shift+B`); the top shows the current session's stats. The side card is **collapsed by default** — its header reads `<session name> · Context`; click to expand the full card.
+Open the right panel (`Ctrl+Shift+B`); the top shows the current session's stats. The side card is **expanded by default** — its content scrolls inside the card when it exceeds the available height, and its expanded/collapsed state is remembered.
 
 | Section | Content |
 |---|---|
@@ -143,10 +143,11 @@ Submission: [Antigravity Marketplace partner intake form](https://forms.gle/2EX5
 
 ### Release flow
 
-1. Bump `version` in `plugin.json` (SemVer)
-2. Run `agy plugin validate .` and `node test/test-stats.mjs`
-3. `git commit` + `git tag v3.0.1` + `git push --tags`
-4. Users uninstall/reinstall to get the new version
+1. Bump `version` in `plugin.json` (SemVer) and add release notes to `CHANGELOG.md`.
+2. Run `agy plugin validate .` and `node test/test-stats.mjs`.
+3. Commit, tag `v<version>`, and push the branch and tag.
+4. Create a GitHub Release for the tag and attach a ZIP containing the plugin files.
+5. Users uninstall/reinstall to get the new version.
 
 ---
 
@@ -162,7 +163,7 @@ Everything is read from local files under `~/.gemini/antigravity/`:
 | Commands & output | `tool_calls` `run_command` + `GENERIC` records |
 | File operations | `tool_calls` `write_file` / `edit_file` / `read_file` |
 | Context composition | Mapped to real tokens by each message type's character share |
-| Context events | transcript `truncated_fields` |
+| Context events | transcript event types and text (`GENERIC`, `PLANNER_RESPONSE`, `SYSTEM_MESSAGE`, `USER_INPUT`, etc.) plus `truncated_fields` |
 | Model names | `conversations/<id>.db` `gen_metadata` |
 
 ### How context usage is computed
@@ -184,6 +185,8 @@ Take the gap between adjacent event timestamps and classify it by **the type of 
 | `USER_INPUT` | Awaiting input |
 
 Gaps > 5 minutes are treated as idle and excluded from active time.
+
+Daily usage and hourly activity convert transcript timestamps to the computer's system local timezone before grouping. Context events are read from the active session transcript; the side panel can filter by event type and search the captured text. Displayed content is path-redacted and kept local.
 
 ---
 
@@ -251,7 +254,7 @@ The sidecar connects to Antigravity over CDP:
 After the page loads:
 
 - Insert the "Context Overview" menu item in the sidebar
-- Inject the current-session card into the right panel (collapsed by default)
+- Inject the current-session card into the right panel (expanded by default, with its own scroll area)
 
 ### Why not the official Sidecar WebUI
 

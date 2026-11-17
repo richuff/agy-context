@@ -42,6 +42,9 @@
   let DATA = __PAYLOAD__;
   let RANGE = 'all';
   let EXEC_FILTER = 'all';
+  let CTX_EVENT_TYPE = 'all';
+  let CTX_EVENT_QUERY = '';
+  let CTX_EVENT_EXPANDED = '';
   let HEAT_METRIC = 'tokens';
   let SQ = '';
   let SWS = '';
@@ -50,9 +53,10 @@
   const EXPANDED = {};
   const EXEC_EXPANDED = {};
   const cleanups = [];
-  // 左侧 sidebox 默认折叠；用户手动展开/收起后记住，且不被 5 秒重绘重置
-  const SIDE_COLLAPSE_KEY = 'agy-context:side-collapsed';
-  let sideCollapsed = true;
+  // 侧边卡片默认展开；用户手动折叠/展开后记住，且不被 5 秒重绘重置。
+  // 使用新 key，让此前持久化的“默认折叠”状态不会继续隐藏卡片内容。
+  const SIDE_COLLAPSE_KEY = 'agy-context:side-collapsed-v2';
+  let sideCollapsed = false;
 
   /* ==========================================================================
      工具函数与跨端口持久化
@@ -470,6 +474,11 @@
 .agy-list{display:flex;flex-direction:column;gap:1px;max-height:250px;overflow-y:auto}
 .agy-ev-row{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:5px;font-size:11px}
 .agy-ev-row:hover{background:var(--c-hover)}
+.agy-ce-controls{display:flex;gap:6px;margin:0 0 8px;min-width:0}
+.agy-ce-controls select,.agy-ce-controls input{box-sizing:border-box;min-width:0;height:29px;border:1px solid var(--c-line);border-radius:6px;background:var(--c-card);color:var(--c-fg);font:inherit;font-size:10.5px;padding:4px 7px}
+.agy-ce-controls select{flex:0 0 128px}.agy-ce-controls input{flex:1 1 auto}
+.agy-ce-row{width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.agy-ce-detail{margin:0 6px 7px 78px;padding:7px 8px;border-radius:5px;background:var(--c-soft);color:var(--c-fg2);font-size:10px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
 .agy-ev-nm{flex:0 0 64px;font-weight:560;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agy-ev-d{flex:1;color:var(--c-mut);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agy-ev-w{flex:0 0 auto;color:var(--c-dim);font-size:10.5px;font-variant-numeric:tabular-nums}
@@ -534,9 +543,9 @@
 #${SIDE_ID} .agy-sd-caret{flex:0 0 auto!important;font-size:10px!important;color:var(--c-mut)!important;transition:transform .15s!important;display:inline-block!important}
 #${SIDE_ID} .agy-sd-bar.open .agy-sd-caret{transform:rotate(90deg)!important}
 #${SIDE_ID} .agy-sd-bar-t{flex:1 1 auto!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
-#${SIDE_ID} .agy-sd-body{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;display:flex!important;flex-direction:column!important;gap:9px!important;max-height:calc(100vh - 120px)!important;overflow-y:auto!important;overflow-x:hidden!important;padding-right:2px!important}
+#${SIDE_ID} .agy-sd-body{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:calc(100dvh - 180px)!important;flex:0 1 auto!important;display:flex!important;flex-direction:column!important;gap:9px!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior-y:contain!important;scrollbar-width:thin!important;padding-right:2px!important}
 #${SIDE_ID} .agy-sd-body.collapsed{display:none!important}
-#${SIDE_ID} .agy-sd-content{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;display:flex!important;flex-direction:column!important;gap:9px!important}
+#${SIDE_ID} .agy-sd-content{width:100%!important;max-width:100%!important;box-sizing:border-box!important;min-width:0!important;min-height:max-content!important;flex:0 0 auto!important;display:flex!important;flex-direction:column!important;gap:9px!important}
 
 #${SIDE_ID} .agy-sd-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;width:100%!important;box-sizing:border-box!important;min-width:0!important;padding:0 0 8px!important;border-bottom:1px solid var(--c-line)!important}
 #${SIDE_ID} .agy-sd-head-m{flex:1 1 auto!important;min-width:0!important;overflow:hidden!important}
@@ -1080,7 +1089,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     const tot = vals.reduce((a, b) => a + b, 0);
     if (!tot) return '<div class="agy-card s4">' + cardHead('sun', '活跃时段') + '<div class="agy-empty">暂无数据</div></div>';
     return '<div class="agy-card s4">' +
-      cardHead('sun', '活跃时段', '高峰 <b>' + String(peak).padStart(2, '0') + ':00</b>') +
+      cardHead('sun', '活跃时段', '系统本地时区 · 高峰 <b>' + String(peak).padStart(2, '0') + ':00</b>') +
       '<div class="agy-hr">' + vals.map((v, i) =>
         '<div class="agy-hr-c' + (i === peak ? ' pk' : '') + '" data-tip="' +
         esc(String(i).padStart(2, '0') + ':00 – ' + String(i).padStart(2, '0') + ':59\nToken ' + fn(v) + ' · ' + pctStr(v, tot) + '%') + '">' +
@@ -1112,27 +1121,49 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     '</div>';
   }
 
+  function localEventTime(at) {
+    const d = new Date(at);
+    return Number.isFinite(d.getTime())
+      ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+      : '';
+  }
+
   function cardContextEvents(sess) {
-    const list = (sess && sess.truncations) || [];
-    const TN = { SYSTEM_MESSAGE: '系统消息', GENERIC: '工具输出', PLANNER_RESPONSE: '模型响应', USER_INPUT: '用户输入' };
-    const TC = { SYSTEM_MESSAGE: '#8b5cf6', GENERIC: '#06b6d4', PLANNER_RESPONSE: '#3b82f6', USER_INPUT: '#10b981' };
-    if (!list.length) return '<div class="agy-card s6">' + cardHead('cut', '上下文事件') + '<div class="agy-empty">本次会话没有压缩或剪枝记录</div></div>';
-    const by = {};
-    for (const e of list) by[e.type] = (by[e.type] || 0) + 1;
-    return '<div class="agy-card s6">' +
-      cardHead('cut', '上下文事件', list.length + ' 条') +
-      '<div class="agy-ev-tags">' + Object.entries(by).map(([k, v]) => {
-        const c = TC[k] || '#94a3b8';
-        return '<span class="agy-ev-tag" style="background:' + c + '1c;color:' + c + '">' + esc(TN[k] || k) + ' ' + v + '</span>';
-      }).join('') + '</div>' +
-      '<div class="agy-list agy-scroll">' + list.slice(0, 40).map((e) => {
-        const c = TC[e.type] || '#94a3b8';
-        return '<div class="agy-ev-row"><span style="color:' + c + '">✂</span>' +
-          '<span class="agy-ev-nm" style="color:' + c + '">' + esc(TN[e.type] || e.type) + '</span>' +
-          '<span class="agy-ev-d agy-mono">' + esc((e.fields || []).join(',')) + '</span>' +
-          '<span class="agy-ev-w">step ' + (e.step == null ? '-' : e.step) + '</span>' +
-          '<span class="agy-ev-w">' + esc(e.at ? String(e.at).slice(11, 16) : '') + '</span></div>';
-      }).join('') + '</div></div>';
+    const list = (sess && sess.contextEvents) || [];
+    const names = { SYSTEM_MESSAGE: '系统消息', GENERIC: '工具输出', PLANNER_RESPONSE: '模型响应', USER_INPUT: '用户输入', ERROR_MESSAGE: '错误消息', CHECKPOINT: '检查点', TRUNCATED: '上下文截断' };
+    const colors = { SYSTEM_MESSAGE: '#8b5cf6', GENERIC: '#06b6d4', PLANNER_RESPONSE: '#3b82f6', USER_INPUT: '#10b981', ERROR_MESSAGE: '#ef4444', CHECKPOINT: '#94a3b8' };
+    const count = (type) => list.filter((e) => type === 'other' ? !names[e.type] : e.type === type).length;
+    const options = [['all', '全部事件'], ['GENERIC', '工具输出'], ['PLANNER_RESPONSE', '模型响应'], ['SYSTEM_MESSAGE', '系统消息'], ['USER_INPUT', '用户输入'], ['ERROR_MESSAGE', '错误消息'], ['CHECKPOINT', '检查点'], ['other', '其他类型']];
+    const query = CTX_EVENT_QUERY.trim().toLocaleLowerCase();
+    const matches = list.map((e, i) => ({ ...e, _key: 'ce' + i })).filter((e) => {
+      if (CTX_EVENT_TYPE !== 'all' && (CTX_EVENT_TYPE === 'other' ? names[e.type] : e.type !== CTX_EVENT_TYPE)) return false;
+      if (!query) return true;
+      return [e.type, e.status, e.text, ...(e.fields || [])].join(' ').toLocaleLowerCase().includes(query);
+    });
+    const shown = matches.slice(-100).reverse();
+    const rows = shown.map((e) => {
+      const color = colors[e.type] || '#94a3b8';
+      const text = String(e.text || (e.fields || []).join(', ') || e.status || '').trim();
+      const preview = text.replace(/\s+/g, ' ').slice(0, 180) || '（无文本内容）';
+      const open = CTX_EVENT_EXPANDED === e._key;
+      const key = '<button type="button" class="agy-ev-row agy-ce-row" data-ce-row="' + e._key + '" aria-expanded="' + open + '">' +
+        '<span style="color:' + color + '">●</span>' +
+        '<span class="agy-ev-nm" style="color:' + color + '">' + esc(names[e.type] || e.type) + '</span>' +
+        '<span class="agy-ev-d agy-mono">' + esc(preview) + '</span>' +
+        '<span class="agy-ev-w">step ' + (e.step == null ? '-' : e.step) + '</span>' +
+        '<span class="agy-ev-w">' + esc(localEventTime(e.at)) + '</span></button>';
+      return key + (open ? '<pre class="agy-ce-detail agy-mono">' + esc(text || '（无文本内容）') + '</pre>' : '');
+    }).join('');
+    const shownText = matches.length > 100 ? '（显示最新 100 条）' : '';
+    return '<div class="agy-card s6" data-context-event-card>' +
+      cardHead('cut', '上下文事件', (sess && sess.contextEventCount != null ? sess.contextEventCount : list.length) + ' 条') +
+      '<div class="agy-ce-controls"><select data-ce-type aria-label="事件类型筛选">' + options.map(([v, label]) =>
+        '<option value="' + v + '"' + (CTX_EVENT_TYPE === v ? ' selected' : '') + '>' + label + (v === 'all' ? ' ' + list.length : v === 'other' ? ' ' + count(v) : v !== 'all' ? ' ' + count(v) : '') + '</option>').join('') +
+        '</select><input type="search" data-ce-query value="' + esc(CTX_EVENT_QUERY) + '" placeholder="搜索工具输出、模型响应、系统消息…" aria-label="搜索上下文事件"></div>' +
+      (list.length ? '<div class="agy-list agy-scroll" data-ce-list>' + (rows || '<div class="agy-empty">没有匹配的上下文事件</div>') + '</div>' +
+        '<div class="agy-ft">匹配 ' + matches.length + ' 条' + shownText + ' · 点击事件可查看完整内容</div>' :
+        '<div class="agy-empty">本次会话没有可查询的 transcript 事件</div>') +
+      '</div>';
   }
 
   function langOf(p) {
@@ -1627,6 +1658,28 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     if (body) body.classList.toggle('collapsed', sideCollapsed);
   }
 
+  function rerenderSideContextEvents(host, focusSearch = false) {
+    const oldCard = host.querySelector('[data-context-event-card]');
+    if (!oldCard) return;
+    const sideBody = host.querySelector('.agy-sd-body');
+    const sideScrollTop = sideBody ? sideBody.scrollTop : 0;
+    const input = oldCard.querySelector('[data-ce-query]');
+    const selection = input ? input.selectionStart : null;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = cardContextEvents(host.__agySess);
+    const nextCard = tmp.firstElementChild;
+    if (!nextCard) return;
+    oldCard.replaceWith(nextCard);
+    if (focusSearch) {
+      const nextInput = nextCard.querySelector('[data-ce-query]');
+      if (nextInput) {
+        nextInput.focus();
+        if (selection != null) nextInput.setSelectionRange(selection, selection);
+      }
+    }
+    if (sideBody) requestAnimationFrame(() => { sideBody.scrollTop = sideScrollTop; });
+  }
+
   function mountSideCard() {
     const panelBody = document.querySelector('[data-side-panel-body]');
     if (!panelBody) return false;
@@ -1647,10 +1700,12 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     const rev = VER + '|' + sid + '|' + (sess ? [
       (sess.tokens && sess.tokens.total) || 0, (sess.tokens && sess.tokens.requests) || 0, sess.steps || 0,
       sess.toolTotal || 0, Math.round(sess.activeSeconds || 0), (sess.context && sess.context.used) || 0, sess.title || '',
+      sess.contextEventsHash || sess.contextEventCount || 0,
     ].join(',') : 'none');
 
     const host = document.getElementById(SIDE_ID);
     if (host && host.isConnected && newTab.contains(host)) {
+      host.__agySess = sess;
       const innerTarget = newTab.querySelector('.w-full.max-w-xl');
       if (innerTarget && host.parentElement !== innerTarget) {
         innerTarget.insertAdjacentElement('afterbegin', host);
@@ -1675,6 +1730,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     el.id = SIDE_ID;
     el.className = 'agy-scope';
     el.dataset.rev = rev;
+    el.__agySess = sess;
     el.innerHTML = sideSkeletonHtml(sess);
     if (window.__agyI18n && window.__agyI18n.watch) window.__agyI18n.watch(el);
     el.addEventListener('click', (e) => {
@@ -1686,6 +1742,50 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
         return;
       }
       if (e.target.closest('[data-sd-open]')) { e.preventDefault(); open(); }
+
+      const eventRow = e.target.closest('[data-ce-row]');
+      if (eventRow) {
+        const key = eventRow.getAttribute('data-ce-row');
+        CTX_EVENT_EXPANDED = CTX_EVENT_EXPANDED === key ? '' : key;
+        rerenderSideContextEvents(el);
+        return;
+      }
+
+      const filterButton = e.target.closest('[data-ef]');
+      const commandRow = e.target.closest('[data-cmd]');
+      if (!filterButton && !commandRow) return;
+
+      const execCard = e.target.closest('[data-execcard]');
+      if (!execCard) return;
+      if (filterButton) {
+        e.preventDefault();
+        EXEC_FILTER = filterButton.getAttribute('data-ef');
+      } else {
+        EXEC_EXPANDED[commandRow.getAttribute('data-cmd')] = !EXEC_EXPANDED[commandRow.getAttribute('data-cmd')];
+      }
+
+      const sideBody = el.querySelector('.agy-sd-body');
+      const sideScrollTop = sideBody ? sideBody.scrollTop : 0;
+      const commandList = execCard.querySelector('.agy-cmd-list');
+      const commandScrollTop = commandList ? commandList.scrollTop : 0;
+      const tmp = document.createElement('div');
+      tmp.innerHTML = cardExec(filtered());
+      const nextCard = tmp.firstElementChild;
+      if (!nextCard) return;
+      execCard.replaceWith(nextCard);
+      const nextList = nextCard.querySelector('.agy-cmd-list');
+      if (nextList) nextList.scrollTop = commandScrollTop;
+      if (sideBody) requestAnimationFrame(() => { sideBody.scrollTop = sideScrollTop; });
+    });
+    el.addEventListener('input', (e) => {
+      if (!e.target.matches('[data-ce-query]')) return;
+      CTX_EVENT_QUERY = e.target.value;
+      rerenderSideContextEvents(el, true);
+    });
+    el.addEventListener('change', (e) => {
+      if (!e.target.matches('[data-ce-type]')) return;
+      CTX_EVENT_TYPE = e.target.value;
+      rerenderSideContextEvents(el);
     });
 
     const inner = newTab.querySelector('.w-full.max-w-xl');
