@@ -265,7 +265,13 @@ export function parseTranscript(filePath, options = {}) {
       for (const tc of d.tool_calls) {
         const opName = String(tc?.name || "");
         if (opName === "write_file" || opName === "edit_file" || opName === "read_file") {
-          const args = tc?.args || {};
+          let args = tc?.args || {};
+          if (typeof args === "string") {
+            try {
+              const parsedArgs = JSON.parse(args);
+              if (parsedArgs && typeof parsedArgs === "object") args = parsedArgs;
+            } catch { /* keep the original value; fields below will safely fall back */ }
+          }
           let p = String(args.Path || args.path || args.TargetFile || args.file_path || "");
           p = p.replace(/^"|"$/g, "").replace(/\\/g, "\\");
           if (p) {
@@ -295,6 +301,8 @@ export function parseTranscript(filePath, options = {}) {
                 added: added.lines,
                 removedTruncated: removed.truncated,
                 addedTruncated: added.truncated,
+                removedMissingBytes: removed.missingBytes || 0,
+                addedMissingBytes: added.missingBytes || 0,
               };
               if (Number.isInteger(lineStart) && lineStart > 0) fileOp.lineStart = lineStart;
             }
@@ -572,15 +580,37 @@ function redactContextText(text) {
 }
 
 function captureChangedLines(text) {
-  const clean = redactContextText(String(text || ""));
-  if (!clean) return { lines: [], truncated: false };
+  const marker = /(?:^|\r?\n)<truncated (\d+) bytes>[ \t]*$/.exec(text);
+  const missingBytes = marker ? Number(marker[1]) : 0;
+  const source = marker ? text.slice(0, marker.index) : text;
+  const clean = redactContextText(normalizeCapturedCode(source, Boolean(marker)));
+  if (!clean) return { lines: [], truncated: false, missingBytes };
   const truncatedByChars = clean.length > 12000;
   const limited = truncatedByChars ? clean.slice(0, 12000) : clean;
   const allLines = limited.split(/\r?\n/);
   return {
     lines: allLines.slice(0, 120),
     truncated: truncatedByChars || allLines.length > 120,
+    missingBytes,
   };
+}
+
+function normalizeCapturedCode(text, partial = false) {
+  let source = text;
+  const candidate = source.trim();
+  if (candidate.startsWith('"')) {
+    try {
+      const decoded = JSON.parse(candidate);
+      if (typeof decoded === "string") source = decoded;
+    } catch {
+      if (partial) {
+        // Keep only complete JSON characters and escapes before the truncation.
+        const prefix = /^"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[\da-fA-F]{4}))*/.exec(candidate)[0];
+        source = JSON.parse(prefix + '"');
+      }
+    }
+  }
+  return source.replace(/\r\n?/g, "\n");
 }
 
 function bytesToLatin1(val) {

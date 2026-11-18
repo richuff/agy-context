@@ -173,6 +173,8 @@
     "第 ": "Line ",
     " 行起": " onward",
     "变更内容过长，仅显示前 120 行": "Change is long; showing the first 120 lines",
+    "原始日志已截断，缺少 ": "Source log truncated; missing ",
+    " 字节": " bytes",
     "仅显示最近 10 次修改": "Showing the 10 most recent edits",
     "工具记录中没有修改前后的文本片段": "The tool record did not include the before/after text",
     "本次会话只记录了文件读取，没有可展示的增删行": "This session only recorded reads; no changed lines are available",

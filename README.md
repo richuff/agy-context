@@ -20,7 +20,7 @@ Open the right panel (`Ctrl+Shift+B`); the top shows the current session's stats
 | **KPI** | Token usage · Est. cost · Cache hit · Active time |
 | **Current Context** | Used / window size, percentage, colored stacked bar, 6-segment breakdown |
 | **Context Events** | Searchable tool inputs and outputs, model responses, system messages, user inputs and truncation records |
-| **File Activity** | Write / edit / read counts and character volume per file; expand a file to inspect recorded added and removed lines |
+| **File Activity** | Per-file write, edit, and read counts; expand to see recorded changes as a Markdown preview or indented code, with a notice if the transcript was truncated |
 | **Models** | Models used in this session and their call counts |
 | **File Types** | Grouped by extension |
 | **Hourly Activity** | 24-hour distribution |

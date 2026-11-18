@@ -163,8 +163,8 @@ if (mod) {
         type: "PLANNER_RESPONSE", step_index: 7, created_at: "2026-11-17T10:00:06Z", content: "Applied a file edit",
         tool_calls: [{ name: "edit_file", args: {
           TargetFile: "D:\\workspace\\private\\src\\demo.js",
-          TargetContent: "const answer = 40;",
-          ReplacementContent: "const answer = 42;",
+          TargetContent: JSON.stringify("const answer = 40;\nreturn answer;\nconsole.log(answer);"),
+          ReplacementContent: JSON.stringify("const answer = 42;\nreturn answer;\nconsole.log(answer);"),
         } }],
       },
     ];
@@ -184,11 +184,25 @@ if (mod) {
           && toolInput.text.includes("const answer = 42;")
           && !/(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/.test(toolInput.text)
           && fileEdit?.changes?.removed?.[0] === "const answer = 40;"
+          && fileEdit?.changes?.removed?.[1] === "return answer;"
           && fileEdit?.changes?.added?.[0] === "const answer = 42;"
+          && fileEdit?.changes?.added?.[1] === "return answer;"
           && !/(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/.test(fileEdit?.path || "")
           && !summary.fileOps[0]?.changes)
         ok("上下文事件捕获工具输入输出与文件增删行，并脱敏路径");
       else bad("工具输入输出与文件修改行捕获", JSON.stringify({ count: summary.contextEventCount, captured: captured.contextEvents.length, types: [...types], toolInput, fileEdit }));
+
+      const preview = "# Design\n\n## Details\n    keep indentation\nliteral \\n";
+      const partial = JSON.stringify(preview).slice(0, -1) + "\\\n<truncated 37305 bytes>";
+      const edit = (Content) => ({ tool_calls: [{ name: "write_file", args: { Path: "design.md", Content } }] });
+      writeFileSync(transcript, [edit(partial), edit("<truncated 22 bytes>")].map((row) => JSON.stringify(row)).join("\n"), "utf8");
+      const [previewEdit, missingEdit] = parseTranscript(transcript, { captureFileChanges: true }).fileOps;
+      if (previewEdit?.changes?.added.join("\n") === preview
+          && previewEdit.changes.addedMissingBytes === 37305
+          && !previewEdit.changes.addedTruncated
+          && missingEdit?.changes?.added.length === 0 && missingEdit.changes.addedMissingBytes === 22)
+        ok("文件预览恢复截断 JSON 的完整行，并区分原始日志缺失");
+      else bad("文件预览恢复截断 JSON");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

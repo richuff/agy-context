@@ -15,7 +15,7 @@
  * 当前会话通过 URL `/c/<conversationId>` 识别。数据由 main.mjs 通过占位符注入（注释里勿写占位符本身）。
  */
 (() => {
-  const VER = '3.0.16';
+  const VER = '3.0.20';
   const ROOT_ID = '__agy_ctx_root_v3__';
   const ITEM_ID = '__agy_ctx_item_v3__';
   const SIDE_ID = '__agy_ctx_side_v3__';
@@ -479,6 +479,10 @@
 .agy-ce-controls select{flex:0 0 128px}.agy-ce-controls input{flex:1 1 auto}
 .agy-ce-row{width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .agy-ce-detail{margin:0 6px 7px 78px;padding:7px 8px;border-radius:5px;background:var(--c-soft);color:var(--c-fg2);font-size:10px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
+.agy-ce-arg{margin:0 0 8px;min-width:0}
+.agy-ce-arg-k{margin:0 0 3px;color:var(--c-dim);font:600 10px/1.4 var(--font-sans, sans-serif)}
+.agy-ce-code,.agy-ce-json{margin:0;padding:7px 8px;border-radius:5px;background:var(--c-card);font:10px/1.55 var(--font-mono, monospace);white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2}
+.agy-ce-code{color:var(--c-fg2)}
 .agy-ev-nm{flex:0 0 64px;font-weight:560;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agy-ev-d{flex:1;color:var(--c-mut);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agy-ev-w{flex:0 0 auto;color:var(--c-dim);font-size:10.5px;font-variant-numeric:tabular-nums}
@@ -497,7 +501,26 @@
 .agy-fa-op{padding:3px 0 6px}
 .agy-fa-op+.agy-fa-op{border-top:1px solid var(--c-line);padding-top:7px}
 .agy-fa-op-h{display:flex;gap:8px;margin-bottom:4px;color:var(--c-dim);font-size:9.5px}
-.agy-fa-diff{margin:0;font:10px/1.5 var(--font-mono,monospace);white-space:pre-wrap;overflow-wrap:anywhere}
+.agy-fa-diff{display:block!important;margin:0;padding:6px;border-radius:4px;background:var(--c-card);font:11px/1.6 ui-monospace,Consolas,monospace;tab-size:4}
+.agy-fa-line{display:grid!important;grid-template-columns:18px minmax(0,1fr)!important;align-items:start!important;min-width:0!important}
+.agy-fa-code{display:block!important;margin:0!important;padding:0!important;min-width:0!important;background:transparent!important;color:inherit!important;font:inherit!important;white-space:pre-wrap!important;overflow-wrap:anywhere!important;tab-size:4!important}
+.agy-fa-sign{user-select:none;white-space:pre!important}
+.agy-fa-md{padding:7px 9px;border-inline-start:2px solid currentColor;overflow-wrap:anywhere}
+.agy-fa-md-body{color:var(--c-fg2);font:11.5px/1.6 system-ui,sans-serif;min-width:0}
+.agy-fa-md-sign{font-size:11px;font-weight:700}
+.agy-fa-md-body :is(h1,h2,h3,h4,h5,h6){margin:7px 0 4px;font-weight:650;line-height:1.35}
+.agy-fa-md-body h1{font-size:16px}.agy-fa-md-body h2{font-size:14px}
+.agy-fa-md-body :is(h3,h4,h5,h6){font-size:12px}
+.agy-fa-md-body :is(p,blockquote,pre,ul,ol){margin:4px 0 7px}
+.agy-fa-md-body :is(ul,ol){padding-inline-start:22px}
+.agy-fa-md-body ul{list-style:disc}.agy-fa-md-body ol{list-style:decimal}
+.agy-fa-md-body blockquote{border-inline-start:2px solid var(--c-line);padding-inline-start:8px;color:var(--c-mut)}
+.agy-fa-md-body pre{padding:6px;background:var(--c-card);border-radius:4px}
+.agy-fa-md-body code{font:inherit;font-family:ui-monospace,Consolas,monospace;background:var(--c-card);border-radius:3px}
+.agy-fa-md-table{max-width:100%;overflow-x:auto}
+.agy-fa-md-body table{border-collapse:collapse;font-size:11px}
+.agy-fa-md-body :is(th,td){padding:3px 6px;border:1px solid var(--c-line);text-align:start;vertical-align:top}
+.agy-fa-md-body hr{border:0;border-top:1px solid var(--c-line);margin:8px 0}
 .agy-fa-del{display:block;color:#b42318;background:rgba(239,68,68,.08)}
 .agy-fa-add{display:block;color:#087443;background:rgba(16,185,129,.09)}
 .agy-fa-missing{color:var(--c-dim);font-size:10px}
@@ -1147,6 +1170,33 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
       : '';
   }
 
+  function prettyEventValue(value) {
+    if (typeof value !== 'string') return JSON.stringify(value, null, 2);
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+    } catch { return value; }
+  }
+
+  function formatEventDetail(event, text) {
+    if (event.type === 'TOOL_CALL_INPUT') {
+      try {
+        const args = JSON.parse(text);
+        if (args && typeof args === 'object' && !Array.isArray(args)) {
+          return Object.entries(args).map(([key, value]) => {
+            const codeLike = typeof value === 'string' && /(content|replacement|targetcontent|code|script|commandline|patch|diff)/i.test(key);
+            const body = codeLike
+              ? '<pre class="agy-ce-code agy-mono">' + esc(value) + '</pre>'
+              : '<pre class="agy-ce-json agy-mono">' + esc(prettyEventValue(value)) + '</pre>';
+            return '<div class="agy-ce-arg"><div class="agy-ce-arg-k">' + esc(key) + '</div>' + body + '</div>';
+          }).join('');
+        }
+        return '<pre class="agy-ce-json agy-mono">' + esc(JSON.stringify(args, null, 2)) + '</pre>';
+      } catch { /* truncated or non-JSON tool input: show the captured text */ }
+    }
+    return '<pre class="agy-ce-json agy-mono">' + esc(prettyEventValue(text)) + '</pre>';
+  }
+
   function cardContextEvents(sess) {
     const list = (sess && sess.contextEvents) || [];
     const names = { SYSTEM_MESSAGE: '系统消息', GENERIC: '工具输出', TOOL_CALL_INPUT: '工具输入', PLANNER_RESPONSE: '模型响应', USER_INPUT: '用户输入', ERROR_MESSAGE: '错误消息', CHECKPOINT: '检查点', TRUNCATED: '上下文截断' };
@@ -1171,7 +1221,7 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
         '<span class="agy-ev-d agy-mono">' + esc(preview) + '</span>' +
         '<span class="agy-ev-w">step ' + (e.step == null ? '-' : e.step) + '</span>' +
         '<span class="agy-ev-w">' + esc(localEventTime(e.at)) + '</span></button>';
-      return key + (open ? '<pre class="agy-ce-detail agy-mono">' + esc(text || '（无文本内容）') + '</pre>' +
+      return key + (open ? '<div class="agy-ce-detail">' + (text ? formatEventDetail(e, text) : '（无文本内容）') + '</div>' +
         (e.truncated ? '<div class="agy-fa-missing">内容过长，已截取前 6000 字符</div>' : '') : '');
     }).join('');
     const shownText = matches.length > 100 ? '（显示最新 100 条）' : '';
@@ -1200,6 +1250,106 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
     return MAP[ext] || ['?', '#94a3b8'];
   }
 
+  function fileDiffSnippet(lines, missingBytes) {
+    if (missingBytes != null) return { lines, missingBytes };
+    // A running sidecar can still have snippets captured before this update.
+    let source = lines.join('\n');
+    const marker = /(?:^|\n)<truncated (\d+) bytes>[ \t]*$/.exec(source);
+    if (marker) source = source.slice(0, marker.index);
+    const candidate = source.trim();
+    if (candidate.startsWith('"')) {
+      try {
+        const decoded = JSON.parse(candidate);
+        if (typeof decoded === 'string') source = decoded;
+      } catch {
+        if (marker) {
+          const prefix = /^"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[\da-fA-F]{4}))*/.exec(candidate)[0];
+          source = JSON.parse(prefix + '"');
+        }
+      }
+    }
+    return { lines: source ? source.replace(/\r\n?/g, '\n').split('\n') : [], missingBytes: marker ? Number(marker[1]) : 0 };
+  }
+
+  // Render a small Markdown subset. The transcript is text; never insert its HTML or load its URLs.
+  function fileMarkdownInline(line) {
+    let html = '', pos = 0;
+    for (const m of line.matchAll(/`([^`]+)`|\*\*([^*]+)\*\*|!\[([^\]]*)\]\([^)]+\)|\[([^\]]+)\]\([^)]+\)/g)) {
+      html += esc(line.slice(pos, m.index));
+      html += m[1] != null ? '<code>' + esc(m[1]) + '</code>'
+        : m[2] != null ? '<strong>' + esc(m[2]) + '</strong>' : esc(m[3] ?? m[4]);
+      pos = m.index + m[0].length;
+    }
+    return html + esc(line.slice(pos));
+  }
+
+  function renderFileMarkdown(lines) {
+    const cells = (line) => line.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((s) => s.trim().replace(/\\\|/g, '|'));
+    const divider = (line) => Boolean(line && line.includes('|') && cells(line).every((s) => /^:?-{3,}:?$/.test(s)));
+    const heading = /^ {0,3}(#{1,6})[ \t]+(.+)$/;
+    const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+    const list = /^\s*([-+*]|\d+[.)])\s+(.+)$/;
+    const quote = /^ {0,3}>\s?/;
+    const rule = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
+    const inline = fileMarkdownInline;
+    let html = '';
+    for (let i = 0; i < lines.length;) {
+      const line = lines[i++];
+      if (!line.trim()) continue;
+      const code = fence.exec(line);
+      const head = heading.exec(line);
+      const item = list.exec(line);
+      if (code) {
+        const end = new RegExp('^ {0,3}' + code[1][0] + '{' + code[1].length + ',}\\s*$');
+        const body = [];
+        while (i < lines.length && !end.test(lines[i])) body.push(lines[i++]);
+        if (i < lines.length) i++;
+        html += '<pre class="agy-fa-code">' + esc(body.join('\n')) + '</pre>';
+      } else if (head) {
+        const tag = 'h' + head[1].length;
+        html += '<' + tag + '>' + inline(head[2]) + '</' + tag + '>';
+      } else if (rule.test(line)) {
+        html += '<hr>';
+      } else if (line.includes('|') && divider(lines[i]) && cells(line).length === cells(lines[i]).length) {
+        const header = cells(line);
+        i++;
+        const row = (values, tag) => '<tr>' + values.map((s) => '<' + tag + '>' + inline(s) + '</' + tag + '>').join('') + '</tr>';
+        html += '<div class="agy-fa-md-table"><table><thead>' + row(header, 'th') + '</thead><tbody>';
+        while (i < lines.length && lines[i].includes('|') && cells(lines[i]).length === header.length) html += row(cells(lines[i++]), 'td');
+        html += '</tbody></table></div>';
+      } else if (item) {
+        const tag = /^\d/.test(item[1]) ? 'ol' : 'ul';
+        html += '<' + tag + '><li>' + inline(item[2]) + '</li>';
+        let next;
+        while (i < lines.length && (next = list.exec(lines[i])) && /^\d/.test(next[1]) === (tag === 'ol')) {
+          html += '<li>' + inline(next[2]) + '</li>';
+          i++;
+        }
+        html += '</' + tag + '>';
+      } else if (quote.test(line)) {
+        const quoted = [line.replace(quote, '')];
+        while (i < lines.length && quote.test(lines[i])) quoted.push(lines[i++].replace(quote, ''));
+        html += '<blockquote>' + quoted.map(inline).join('<br>') + '</blockquote>';
+      } else {
+        html += '<p>' + inline(line) + '</p>';
+      }
+    }
+    return html;
+  }
+
+  function renderFileDiffLines(snippet, kind, markdown) {
+    const sign = kind === 'del' ? '−' : '+';
+    const { lines, missingBytes } = snippet;
+    let body = '';
+    if (lines.length) {
+      body = markdown
+        ? '<div class="agy-fa-md agy-fa-' + kind + '" data-notr><div class="agy-fa-md-sign">' + sign + '</div><div class="agy-fa-md-body">' + renderFileMarkdown(lines) + '</div></div>'
+        : '<div class="agy-fa-diff" data-notr>' + lines.map((line) => '<div class="agy-fa-line agy-fa-' + kind + '"><span class="agy-fa-sign">' + sign + '</span><code class="agy-fa-code">' + esc(line || ' ') + '</code></div>').join('') + '</div>';
+    }
+    if (missingBytes) body += '<div class="agy-fa-missing">' + sign + ' · 原始日志已截断，缺少 ' + esc(missingBytes.toLocaleString()) + ' 字节</div>';
+    return body;
+  }
+
   function cardFileActivity(sess) {
     const ops = (sess && sess.fileOps) || [];
     if (!ops.length) return '<div class="agy-card s12">' + cardHead('file', '文件活动') + '<div class="agy-empty">暂无文件操作</div></div>';
@@ -1216,22 +1366,23 @@ body.theme-dark .agy-cmd-tag,body[class*="theme-dark"] .agy-cmd-tag{background:r
       const segs = String(p).split(/[\\/]/);
       const lang = langOf(p);
       const changes = ((sess && sess.fileChanges) || []).filter((op) => op.path === p);
-      const changedLines = changes.map((op) => {
+      const markdown = /\.(?:md|markdown|mdx)$/i.test(p);
+      const changedLines = changes.slice(-10).map((op) => {
         const diff = op.changes || {};
         const removed = Array.isArray(diff.removed) ? diff.removed : [];
         const added = Array.isArray(diff.added) ? diff.added : [];
-        const lineRows = removed.map((line) => '<span class="agy-fa-del">− ' + esc(line || ' ') + '</span>')
-          .concat(added.map((line) => '<span class="agy-fa-add">+ ' + esc(line || ' ') + '</span>')).join('\n');
+        const lineRows = renderFileDiffLines(fileDiffSnippet(removed, diff.removedMissingBytes), 'del', markdown)
+          + renderFileDiffLines(fileDiffSnippet(added, diff.addedMissingBytes), 'add', markdown);
         const opName = op.op === 'write' ? '写入' : '修改';
         const step = op.step == null ? '—' : op.step;
         const lineLabel = op.lineStart ? ' · 第 ' + op.lineStart + ' 行起' : '';
         const time = op.at ? new Date(op.at).toLocaleString() : '';
         const omitted = (diff.removedTruncated || diff.addedTruncated) ? '<div class="agy-fa-missing">（变更内容过长，仅显示前 120 行）</div>' : '';
         return '<div class="agy-fa-op"><div class="agy-fa-op-h"><span>' + opName + '</span><span>步骤 ' + step + lineLabel + '</span><span>' + esc(time) + '</span></div>' +
-          (lineRows ? '<pre class="agy-fa-diff">' + lineRows + '</pre>' : '<div class="agy-fa-missing">工具记录中没有修改前后的文本片段</div>') + omitted + '</div>';
+          (lineRows || '<div class="agy-fa-missing">工具记录中没有修改前后的文本片段</div>') + omitted + '</div>';
       });
       const changeDetail = changedLines.length
-        ? changedLines.slice(-10).join('') + (changedLines.length > 10 ? '<div class="agy-fa-missing">仅显示最近 10 次修改</div>' : '')
+        ? changedLines.join('') + (changes.length > 10 ? '<div class="agy-fa-missing">仅显示最近 10 次修改</div>' : '')
         : '<div class="agy-fa-missing">本次会话只记录了文件读取，没有可展示的增删行</div>';
       return '<details class="agy-fa-item"><summary class="agy-fa-row" data-tip="' + esc(p + '\n写 ' + v.write + ' · 改 ' + v.edit + ' · 读 ' + v.read + (v.chars ? '\n' + v.chars + ' 字符' : '')) + '">' +
         '<span class="agy-fa-toggle">›</span>' +
